@@ -220,6 +220,30 @@ export class PiBridge {
     return this.previews.fetch(id, request);
   }
 
+  async testRuntimeResume(): Promise<AppState> {
+    if (this.config.executor !== "smolvm") {
+      this.addEvent("runtime", "Resume test unavailable", "Current executor is local", true);
+      this.emit();
+      return this.snapshot();
+    }
+
+    this.lastError = undefined;
+    this.smolvm ??= new SmolvmRuntime(this.config);
+    this.addEvent("runtime", "Resume test started", `Stopping and restarting ${this.config.smolvm.name}`);
+    this.emit();
+
+    try {
+      const result = await this.smolvm.testResume();
+      this.addEvent("runtime", "Resume test passed", stringifyCompact(result));
+    } catch (error) {
+      this.lastError = error instanceof Error ? error.message : String(error);
+      this.addEvent("runtime", "Resume test failed", this.lastError, true);
+    }
+
+    this.emit();
+    return this.snapshot();
+  }
+
   dispose(): void {
     this.disposeCurrentSession();
     for (const id of [...this.previewProcesses.keys()]) {

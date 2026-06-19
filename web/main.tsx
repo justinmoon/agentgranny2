@@ -18,6 +18,7 @@ import {
   Play,
   Plus,
   RefreshCw,
+  RotateCcw,
   Send,
   SquarePen,
   Terminal,
@@ -69,6 +70,7 @@ function App() {
   const [rightTabs, setRightTabs] = useState<RightPanelTab[]>(initialRightTabs);
   const [activeRightTabId, setActiveRightTabId] = useState(initialRightTabs[0].id);
   const [newTabMenuOpen, setNewTabMenuOpen] = useState(false);
+  const [resumeTestRunning, setResumeTestRunning] = useState(false);
 
   const refresh = useCallback(async () => {
     const response = await fetch("/api/state");
@@ -150,6 +152,20 @@ function App() {
     setState((await response.json()) as AppState);
   }
 
+  async function testRuntimeResume() {
+    setResumeTestRunning(true);
+    setError(undefined);
+    try {
+      const response = await fetch("/api/runtime/resume-test", { method: "POST" });
+      if (!response.ok) throw new Error(await response.text());
+      setState((await response.json()) as AppState);
+    } catch (err) {
+      setError(readError(err));
+    } finally {
+      setResumeTestRunning(false);
+    }
+  }
+
   function addRightTab(type: RightPanelTab["type"]) {
     const title = type === "preview" ? "Preview" : "Events";
     const id = `${type}-${Date.now().toString(36)}`;
@@ -204,6 +220,20 @@ function App() {
                 {state.runtime.vm.name} · {state.runtime.vm.state}
               </small>
             )}
+            <button
+              type="button"
+              className="runtime-test-button"
+              onClick={() => void testRuntimeResume()}
+              disabled={state.runtime.executor !== "smolvm" || resumeTestRunning}
+              title={
+                state.runtime.executor === "smolvm"
+                  ? "Stop the smolvm, resume it, and run a guest smoke command"
+                  : "Resume test requires the smolvm executor"
+              }
+            >
+              <RotateCcw size={14} />
+              <span>{resumeTestRunning ? "Testing..." : "Test resume"}</span>
+            </button>
           </div>
 
           <div className="actions">

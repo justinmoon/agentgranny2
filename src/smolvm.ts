@@ -13,6 +13,13 @@ export type SmolvmSnapshot = {
   guestWorkspace: string;
 };
 
+export type SmolvmResumeTestResult = {
+  before?: SmolvmSnapshot;
+  stopped?: SmolvmSnapshot;
+  after?: SmolvmSnapshot;
+  output: string;
+};
+
 export class SmolvmRuntime {
   private currentState?: SmolvmSnapshot;
   private startPromise?: Promise<void>;
@@ -21,8 +28,12 @@ export class SmolvmRuntime {
   constructor(private readonly config: AppConfig) {}
 
   async ensureReady(): Promise<void> {
-    this.startPromise ??= this.start();
-    await this.startPromise;
+    this.startPromise ??= this.ensureRunning();
+    try {
+      await this.startPromise;
+    } finally {
+      this.startPromise = undefined;
+    }
   }
 
   snapshot(): SmolvmSnapshot | undefined {
@@ -121,7 +132,43 @@ export class SmolvmRuntime {
     this.processes.clear();
   }
 
-  private async start(): Promise<void> {
+  async testResume(): Promise<SmolvmResumeTestResult> {
+    await this.ensureReady();
+    const before = this.snapshot();
+
+    await this.stop();
+    const stopped = this.snapshot();
+
+    await this.ensureReady();
+    const probe = await this.execInGuest("printf granny-resume-ok", this.config.smolvm.guestWorkspace, {
+      timeout: 30
+    });
+    if (probe.exitCode !== 0) {
+      throw new Error(`smolvm resume probe failed: ${probe.stderr || probe.stdout}`);
+    }
+
+    await this.refreshState();
+    return {
+      before,
+      stopped,
+      after: this.snapshot(),
+      output: probe.stdout
+    };
+  }
+
+  private async stop(): Promise<void> {
+    for (const child of this.processes) {
+      child.kill("SIGTERM");
+    }
+    this.processes.clear();
+
+    await this.runSmolvm(["machine", "stop", "--name", this.config.smolvm.name], {
+      allowFailure: true
+    });
+    await this.refreshState();
+  }
+
+  private async ensureRunning(): Promise<void> {
     mkdirSync(this.config.workspace, { recursive: true });
     mkdirSync(this.config.projectsDir, { recursive: true });
     mkdirSync(this.config.agentCwd, { recursive: true });
@@ -150,8 +197,11 @@ export class SmolvmRuntime {
       ]);
     }
 
-    await this.runSmolvm(["machine", "start", "--name", this.config.smolvm.name]);
     await this.refreshState();
+    if (this.currentState?.state !== "running") {
+      await this.runSmolvm(["machine", "start", "--name", this.config.smolvm.name]);
+      await this.refreshState();
+    }
 
     const check = await this.execInGuest(`test -d ${shellQuote(this.config.smolvm.guestWorkspace)} && pwd`, this.config.smolvm.guestWorkspace, {
       timeout: 30
