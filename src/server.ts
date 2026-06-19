@@ -152,6 +152,10 @@ const server = createServer(async (req, res) => {
       return sendJson(res, await bridge.cancel());
     }
 
+    if (url.pathname === "/api/runtime/resume-test" && req.method === "POST") {
+      return sendJson(res, await bridge.testRuntimeResume());
+    }
+
     if (url.pathname === "/api/events" && req.method === "GET") {
       return handleSse(res);
     }
