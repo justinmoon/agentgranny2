@@ -57,7 +57,7 @@ export class PreviewManager {
       name: input.name?.trim() || `localhost:${input.port}`,
       port: input.port,
       runtime: this.config.executor,
-      path: `/preview/${id}/`,
+      path: `${this.config.previewBasePath}/${id}/`,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now
     };
@@ -170,7 +170,7 @@ function rewritePreviewResponse(service: PreviewService, response: PreviewFetchR
     return { ...response, headers };
   }
 
-  const body = Buffer.from(rewriteText(response.body.toString("utf8"), service.id, contentType), "utf8");
+  const body = Buffer.from(rewriteText(response.body.toString("utf8"), service.path, contentType), "utf8");
   headers["content-length"] = String(body.byteLength);
   return {
     status: response.status,
@@ -199,8 +199,8 @@ function shouldRewrite(contentType: string): boolean {
   );
 }
 
-function rewriteText(content: string, id: string, contentType: string): string {
-  const prefix = `/preview/${id}/`;
+function rewriteText(content: string, previewPath: string, contentType: string): string {
+  const prefix = previewPath;
   let next = content
     .replace(/(\s(?:src|href|action|poster)=["'])\/(?!\/)/gi, `$1${prefix}`)
     .replace(/(url\(["']?)\/(?!\/)/gi, `$1${prefix}`);

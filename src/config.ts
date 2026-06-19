@@ -5,17 +5,22 @@ import { fileURLToPath } from "node:url";
 
 export type AppConfig = {
   appCommit?: string;
+  authEnabled: boolean;
   host: string;
   port: number;
   executor: "local" | "smolvm";
+  stateDir: string;
   workspace: string;
+  workspaceId?: string;
+  workspaceDirName?: string;
+  workspaceRoot: string;
   projectsDir: string;
   agentCwd: string;
-  stateDir: string;
   agentDir: string;
   sessionDir: string;
   deploymentDir: string;
   deploymentBaseDomain?: string;
+  previewBasePath: string;
   openRouterModel: string;
   openRouterEnvFile: string;
   openRouterApiKey?: string;
@@ -70,6 +75,12 @@ function numberFromEnv(name: string, fallback: number): number {
   return Number.isFinite(value) ? value : fallback;
 }
 
+function boolFromEnv(name: string, fallback: boolean): boolean {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  return raw === "1" || raw.toLowerCase() === "true" || raw.toLowerCase() === "yes";
+}
+
 function domainFromEnv(name: string): string | undefined {
   const raw = process.env[name]?.trim().toLowerCase();
   if (!raw) return undefined;
@@ -90,6 +101,7 @@ function readGitCommit(): string | undefined {
 
 export function loadConfig(): AppConfig {
   const workspace = resolve(process.env.AGENTGRANNY_WORKSPACE ?? process.cwd());
+  const workspaceRoot = resolve(process.env.AGENTGRANNY_WORKSPACE_ROOT ?? `${workspace}/workspaces`);
   const projectsDir = resolve(process.env.AGENTGRANNY_PROJECTS_DIR ?? `${workspace}/projects`);
   const agentCwd = resolve(process.env.AGENTGRANNY_AGENT_CWD ?? projectsDir);
   const openRouterEnvFile = resolve(process.env.AGENTGRANNY_OPENROUTER_ENV_FILE ?? `${rootDir}/.env`);
@@ -103,17 +115,20 @@ export function loadConfig(): AppConfig {
 
   return {
     appCommit: process.env.AGENTGRANNY_COMMIT ?? readGitCommit(),
+    authEnabled: boolFromEnv("AGENTGRANNY_AUTH_ENABLED", process.env.NODE_ENV === "production"),
     host: process.env.AGENTGRANNY_HOST ?? "127.0.0.1",
     port: numberFromEnv("AGENTGRANNY_PORT", 7392),
     executor: process.env.AGENTGRANNY_EXECUTOR === "local" ? "local" : "smolvm",
+    stateDir,
     workspace,
+    workspaceRoot,
     projectsDir,
     agentCwd,
-    stateDir,
     agentDir: resolve(process.env.AGENTGRANNY_AGENT_DIR ?? `${stateDir}/pi`),
     sessionDir: resolve(process.env.AGENTGRANNY_SESSION_DIR ?? `${stateDir}/sessions`),
     deploymentDir: resolve(process.env.AGENTGRANNY_DEPLOYMENT_DIR ?? `${stateDir}/deployments`),
     deploymentBaseDomain: domainFromEnv("AGENTGRANNY_DEPLOYMENT_BASE_DOMAIN"),
+    previewBasePath: process.env.AGENTGRANNY_PREVIEW_BASE_PATH ?? "/preview",
     openRouterModel: process.env.AGENTGRANNY_OPENROUTER_MODEL ?? "anthropic/claude-sonnet-4.5",
     openRouterEnvFile,
     openRouterApiKey,

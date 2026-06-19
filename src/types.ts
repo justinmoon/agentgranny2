@@ -1,4 +1,50 @@
 export type ChatRole = "user" | "assistant";
+export type UserRole = "admin" | "user";
+
+export type PublicUser = {
+  id: string;
+  email: string;
+  fullName: string;
+  role: UserRole;
+  inviteId?: string;
+  createdAt: number;
+  lastSeenAt?: number;
+};
+
+export type PublicWorkspace = {
+  id: string;
+  slug: string;
+  displayName: string;
+  ownerUserId: string;
+  machineName: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type PublicInvite = {
+  id: string;
+  code: string;
+  label: string;
+  role: UserRole;
+  usedCount: number;
+  active: boolean;
+  createdByUserId: string;
+  createdAt: number;
+  disabledAt?: number;
+};
+
+export type PublicAdminUser = PublicUser & {
+  workspace?: PublicWorkspace;
+  invite?: PublicInvite;
+};
+
+export type MeState = {
+  ok: true;
+  authEnabled: boolean;
+  user: PublicUser;
+  workspace: PublicWorkspace;
+  workspaces: PublicWorkspace[];
+};
 
 export type ChatMessage = {
   id: string;

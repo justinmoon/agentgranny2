@@ -3,6 +3,7 @@ dist/
 result
 .direnv/
 .agentgranny2/
+.agentgranny2-auth/
 .smoke-workspace/
 .env
 npm-debug.log*

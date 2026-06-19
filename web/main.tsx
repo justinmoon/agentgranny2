@@ -12,24 +12,33 @@ import {
   ExternalLink,
   FileJson,
   GitBranch,
+  LogOut,
   Monitor,
   PanelRightClose,
   PanelRightOpen,
   Play,
   Plus,
   RefreshCw,
-  Rocket,
   RotateCcw,
   Send,
   SquarePen,
   Terminal,
   Trash2,
+  UserPlus,
   X
 } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import type { AppState, ChatMessage, DeploymentRecord, PreviewService, SessionSummary } from "../src/types.js";
-import { DeployPane } from "./DeployPane.js";
+import type {
+  AppState,
+  ChatMessage,
+  MeState,
+  PreviewService,
+  PublicAdminUser,
+  PublicInvite,
+  PublicWorkspace,
+  SessionSummary
+} from "../src/types.js";
 import "./styles.css";
 
 const emptyState: AppState = {
@@ -54,17 +63,20 @@ const emptyState: AppState = {
 
 type RightPanelTab = {
   id: string;
-  type: "preview" | "deploy" | "events";
+  type: "preview" | "events";
   title: string;
 };
 
 const initialRightTabs: RightPanelTab[] = [
   { id: "preview-1", type: "preview", title: "Preview" },
-  { id: "deploy-1", type: "deploy", title: "Deploy" },
   { id: "events-1", type: "events", title: "Events" }
 ];
 
 function App() {
+  const [me, setMe] = useState<MeState | undefined>();
+  const [authChecked, setAuthChecked] = useState(false);
+  const [authEnabled, setAuthEnabled] = useState(false);
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | undefined>();
   const [state, setState] = useState<AppState>(emptyState);
   const [error, setError] = useState<string | undefined>();
   const [selectedPreviewId, setSelectedPreviewId] = useState<string | undefined>();
@@ -73,35 +85,63 @@ function App() {
   const [rightTabs, setRightTabs] = useState<RightPanelTab[]>(initialRightTabs);
   const [activeRightTabId, setActiveRightTabId] = useState(initialRightTabs[0].id);
   const [newTabMenuOpen, setNewTabMenuOpen] = useState(false);
-  const [deployments, setDeployments] = useState<DeploymentRecord[]>([]);
-  const [deployLog, setDeployLog] = useState("");
-  const [deployError, setDeployError] = useState<string | undefined>();
   const [resumeTestRunning, setResumeTestRunning] = useState(false);
+  const isAdminPage = window.location.pathname === "/admin";
+
+  const selectedWorkspace = useMemo(
+    () => me?.workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? me?.workspace,
+    [me, selectedWorkspaceId]
+  );
+
+  const loadMe = useCallback(async () => {
+    const response = await fetch("/api/me");
+    const payload = await readJsonResponse(response);
+    setAuthEnabled(Boolean(payload.authEnabled));
+    if (response.ok) {
+      const next = payload as MeState;
+      setMe(next);
+      setSelectedWorkspaceId((current) => current ?? next.workspace.id);
+    } else {
+      setMe(undefined);
+    }
+    setAuthChecked(true);
+  }, []);
+
+  const workspaceUrl = useCallback(
+    (path: string) => {
+      if (!selectedWorkspace?.id) throw new Error("workspace is not loaded");
+      return `/api/workspaces/${encodeURIComponent(selectedWorkspace.id)}${path}`;
+    },
+    [selectedWorkspace?.id]
+  );
 
   const refresh = useCallback(async () => {
-    const response = await fetch("/api/state");
-    const next = (await response.json()) as AppState;
-    setState(next);
-  }, []);
-
-  const refreshDeployments = useCallback(async () => {
-    const response = await fetch("/api/deployments");
-    const payload = (await response.json()) as { deployments: DeploymentRecord[] };
-    setDeployments(payload.deployments);
-  }, []);
+    if (!selectedWorkspace?.id) return;
+    const response = await fetch(workspaceUrl("/state"));
+    if (!response.ok) throw new Error(await response.text());
+    setState((await response.json()) as AppState);
+    setError(undefined);
+  }, [selectedWorkspace?.id, workspaceUrl]);
 
   useEffect(() => {
-    void refresh().catch((err) => setError(readError(err)));
-    void refreshDeployments().catch((err) => setDeployError(readError(err)));
+    void loadMe().catch((err) => {
+      setError(readError(err));
+      setAuthChecked(true);
+    });
+  }, [loadMe]);
 
-    const events = new EventSource("/api/events");
+  useEffect(() => {
+    if (isAdminPage || !selectedWorkspace?.id) return;
+    void refresh().catch((err) => setError(readError(err)));
+
+    const events = new EventSource(workspaceUrl("/events"));
     events.addEventListener("state", (event) => {
       setState(JSON.parse((event as MessageEvent).data) as AppState);
       setError(undefined);
     });
     events.onerror = () => setError("Event stream disconnected. Refresh or restart the dev server.");
     return () => events.close();
-  }, [refresh, refreshDeployments]);
+  }, [isAdminPage, refresh, selectedWorkspace?.id, workspaceUrl]);
 
   const messages = useMemo(() => state.messages.map(toThreadMessage), [state.messages]);
   const selectedPreview = useMemo(
@@ -128,7 +168,7 @@ function App() {
       const content = appendMessageText(message);
       if (!content.trim()) return;
       setError(undefined);
-      const response = await fetch("/api/messages", {
+      const response = await fetch(workspaceUrl("/messages"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content })
@@ -137,13 +177,13 @@ function App() {
       setState((await response.json()) as AppState);
     },
     onCancel: async () => {
-      const response = await fetch("/api/cancel", { method: "POST" });
+      const response = await fetch(workspaceUrl("/cancel"), { method: "POST" });
       if (response.ok) setState((await response.json()) as AppState);
     }
   });
 
   async function newSession() {
-    const response = await fetch("/api/sessions", {
+    const response = await fetch(workspaceUrl("/sessions"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ new: true })
@@ -152,7 +192,7 @@ function App() {
   }
 
   async function openSession(session: SessionSummary) {
-    const response = await fetch("/api/sessions", {
+    const response = await fetch(workspaceUrl("/sessions"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ path: session.path })
@@ -161,7 +201,7 @@ function App() {
   }
 
   async function removePreview(preview: PreviewService) {
-    const response = await fetch(`/api/previews/${encodeURIComponent(preview.id)}`, { method: "DELETE" });
+    const response = await fetch(`${workspaceUrl("/previews")}/${encodeURIComponent(preview.id)}`, { method: "DELETE" });
     setState((await response.json()) as AppState);
   }
 
@@ -169,7 +209,7 @@ function App() {
     setResumeTestRunning(true);
     setError(undefined);
     try {
-      const response = await fetch("/api/runtime/resume-test", { method: "POST" });
+      const response = await fetch(workspaceUrl("/runtime/resume-test"), { method: "POST" });
       if (!response.ok) throw new Error(await response.text());
       setState((await response.json()) as AppState);
     } catch (err) {
@@ -179,8 +219,15 @@ function App() {
     }
   }
 
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    setMe(undefined);
+    setState(emptyState);
+    setSelectedWorkspaceId(undefined);
+  }
+
   function addRightTab(type: RightPanelTab["type"]) {
-    const title = type === "preview" ? "Preview" : type === "deploy" ? "Deploy" : "Events";
+    const title = type === "preview" ? "Preview" : "Events";
     const id = `${type}-${Date.now().toString(36)}`;
     const tab = { id, type, title };
     setRightTabs((tabs) => [...tabs, tab]);
@@ -203,6 +250,22 @@ function App() {
     }
   }
 
+  if (!authChecked) {
+    return <LoadingScreen text="Loading Agent Granny 2" />;
+  }
+
+  if (authEnabled && !me) {
+    return <AuthScreen onAuth={setMe} onAuthEnabled={setAuthEnabled} />;
+  }
+
+  if (!me || !selectedWorkspace) {
+    return <LoadingScreen text="Preparing workspace" error={error} onRetry={() => void loadMe()} />;
+  }
+
+  if (isAdminPage) {
+    return <AdminPage authEnabled={authEnabled} me={me} onLogout={logout} />;
+  }
+
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <div className="app-shell">
@@ -211,12 +274,23 @@ function App() {
             <div className="brand-mark">G2</div>
             <div>
               <h1>Agent Granny 2</h1>
-              <p>Pi-backed local coding loop</p>
+              <p>{me.user.fullName}</p>
             </div>
           </div>
 
           <div className="workspace-block">
             <span>Workspace</span>
+            {me.workspaces.length > 1 ? (
+              <select value={selectedWorkspace.id} onChange={(event) => setSelectedWorkspaceId(event.target.value)}>
+                {me.workspaces.map((workspace) => (
+                  <option value={workspace.id} key={workspace.id}>
+                    {workspace.displayName}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <strong>{selectedWorkspace.displayName}</strong>
+            )}
             <code title={state.workspace}>{state.workspace || "loading"}</code>
           </div>
 
@@ -254,10 +328,25 @@ function App() {
               <SquarePen size={16} />
               <span>New</span>
             </button>
-            <button type="button" onClick={() => void refresh()}>
+            <button
+              type="button"
+              onClick={() => void refresh()}
+            >
               <RefreshCw size={16} />
               <span>Refresh</span>
             </button>
+            {authEnabled && (
+              <button type="button" onClick={() => void logout()}>
+                <LogOut size={16} />
+                <span>Logout</span>
+              </button>
+            )}
+            {me.user.role === "admin" && (
+              <a className="action-link" href="/admin">
+                <UserPlus size={16} />
+                <span>Admin</span>
+              </a>
+            )}
           </div>
 
           <section className="sessions">
@@ -304,7 +393,7 @@ function App() {
 
           <section className="status-strip" aria-label="Runtime status">
             <StatusItem label="commit" value={state.app.commit ?? "unknown"} />
-            <StatusItem label="model" value={state.model || "loading"} />
+            <StatusItem label="user" value={`${me.user.email} ${me.user.role}`} />
             <StatusItem label="executor" value={state.runtime.executor} />
             <StatusItem label="vm" value={state.runtime.vm ? `${state.runtime.vm.name} ${state.runtime.vm.state}` : "none"} />
             <StatusItem label="workspace" value={state.workspace || "loading"} title={state.workspace} />
@@ -373,18 +462,12 @@ function App() {
                         >
                           {tab.type === "events" ? (
                             <FileJson size={14} />
-                          ) : tab.type === "deploy" ? (
-                            <Rocket size={14} />
                           ) : (
                             <Monitor size={14} />
                           )}
                           <span>{tab.title}</span>
                           <span className="right-tab-count">
-                            {tab.type === "events"
-                              ? state.events.length
-                              : tab.type === "deploy"
-                                ? deployments.length
-                                : state.previews.length}
+                            {tab.type === "events" ? state.events.length : state.previews.length}
                           </span>
                         </button>
                         <button
@@ -413,10 +496,6 @@ function App() {
                           <Monitor size={14} />
                           <span>Preview</span>
                         </button>
-                        <button type="button" onClick={() => addRightTab("deploy")}>
-                          <Rocket size={14} />
-                          <span>Deploy</span>
-                        </button>
                         <button type="button" onClick={() => addRightTab("events")}>
                           <FileJson size={14} />
                           <span>Events</span>
@@ -437,45 +516,6 @@ function App() {
                 <div className="right-panel-body">
                   {activeRightTab?.type === "events" ? (
                     <EventLog events={state.events} />
-                  ) : activeRightTab?.type === "deploy" ? (
-                    <DeployPane
-                      deployments={deployments}
-                      error={deployError}
-                      log={deployLog}
-                      onPublish={async (input) => {
-                        setDeployError(undefined);
-                        setDeployLog("");
-                        const response = await fetch("/api/deployments", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify(input)
-                        });
-                        const payload = await response.json();
-                        if (!response.ok) {
-                          await refreshDeployments();
-                          throw new Error(payload.error ?? JSON.stringify(payload));
-                        }
-                        await refreshDeployments();
-                      }}
-                      onDelete={async (deployment) => {
-                        setDeployError(undefined);
-                        const response = await fetch(`/api/deployments/${encodeURIComponent(deployment.slug)}`, {
-                          method: "DELETE"
-                        });
-                        const payload = await response.json();
-                        if (!response.ok) throw new Error(payload.error ?? JSON.stringify(payload));
-                        setDeployments(payload.deployments ?? []);
-                        setDeployLog("");
-                      }}
-                      onLogs={async (deployment) => {
-                        setDeployError(undefined);
-                        const response = await fetch(`/api/deployments/${encodeURIComponent(deployment.slug)}/logs`);
-                        const payload = await response.json();
-                        if (!response.ok) throw new Error(payload.error ?? JSON.stringify(payload));
-                        setDeployLog(payload.logs ?? "");
-                      }}
-                      onError={setDeployError}
-                    />
                   ) : (
                     <PreviewPane
                       previews={state.previews}
@@ -493,6 +533,314 @@ function App() {
         </main>
       </div>
     </AssistantRuntimeProvider>
+  );
+}
+
+function AuthScreen({
+  onAuth,
+  onAuthEnabled
+}: {
+  onAuth: (me: MeState) => void;
+  onAuthEnabled: (enabled: boolean) => void;
+}) {
+  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [email, setEmail] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [password, setPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
+  const [error, setError] = useState<string | undefined>();
+  const [busy, setBusy] = useState(false);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError(undefined);
+    try {
+      const response = await fetch(mode === "login" ? "/api/auth/login" : "/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, fullName, password, inviteCode })
+      });
+      const payload = await response.json();
+      onAuthEnabled(Boolean(payload.authEnabled));
+      if (!response.ok) throw new Error(payload.error ?? JSON.stringify(payload));
+      onAuth(payload as MeState);
+    } catch (err) {
+      setError(readError(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <main className="auth-shell">
+      <form className="auth-form" onSubmit={(event) => void submit(event)}>
+        <div className="brand auth-brand">
+          <div className="brand-mark">G2</div>
+          <div>
+            <h1>Agent Granny 2</h1>
+            <p>{mode === "login" ? "Sign in" : "Create account"}</p>
+          </div>
+        </div>
+        {mode === "signup" && (
+          <input value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Full name" />
+        )}
+        <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" type="email" />
+        <input
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          placeholder="Password"
+          type="password"
+        />
+        {mode === "signup" && (
+          <input
+            value={inviteCode}
+            onChange={(event) => setInviteCode(event.target.value)}
+            placeholder="Invite code"
+          />
+        )}
+        {error && <div className="form-error">{error}</div>}
+        <button type="submit" disabled={busy || !email.trim() || !password}>
+          {busy ? "Working" : mode === "login" ? "Log in" : "Sign up"}
+        </button>
+        <button
+          type="button"
+          className="auth-switch"
+          onClick={() => {
+            setMode(mode === "login" ? "signup" : "login");
+            setError(undefined);
+          }}
+        >
+          {mode === "login" ? "Need an account?" : "Have an account?"}
+        </button>
+      </form>
+    </main>
+  );
+}
+
+function AdminPage({
+  authEnabled,
+  me,
+  onLogout
+}: {
+  authEnabled: boolean;
+  me: MeState;
+  onLogout: () => Promise<void>;
+}) {
+  const [activeTab, setActiveTab] = useState<"invites" | "users">("invites");
+  const [invites, setInvites] = useState<PublicInvite[]>([]);
+  const [users, setUsers] = useState<PublicAdminUser[]>([]);
+  const [label, setLabel] = useState("");
+  const [role, setRole] = useState("user");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+
+  const loadInvites = useCallback(async () => {
+    const response = await fetch("/api/admin/invites");
+    const payload = (await readJsonResponse(response)) as { invites: PublicInvite[]; error?: string };
+    if (!response.ok) throw new Error(payload.error ?? JSON.stringify(payload));
+    setInvites(payload.invites);
+  }, []);
+
+  const loadUsers = useCallback(async () => {
+    const response = await fetch("/api/admin/users");
+    const payload = (await readJsonResponse(response)) as { users: PublicAdminUser[]; error?: string };
+    if (!response.ok) throw new Error(payload.error ?? JSON.stringify(payload));
+    setUsers(payload.users);
+  }, []);
+
+  useEffect(() => {
+    if (me.user.role !== "admin") return;
+    void Promise.all([loadInvites(), loadUsers()]).catch((err) => setError(readError(err)));
+  }, [loadInvites, loadUsers, me.user.role]);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError(undefined);
+    try {
+      const response = await fetch("/api/admin/invites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label, role })
+      });
+      const payload = (await readJsonResponse(response)) as { invite: PublicInvite; code: string; error?: string };
+      if (!response.ok) throw new Error(payload.error ?? JSON.stringify(payload));
+      setLabel("");
+      await loadInvites();
+    } catch (err) {
+      setError(readError(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function disableInvite(invite: PublicInvite) {
+    setError(undefined);
+    const response = await fetch(`/api/admin/invites/${encodeURIComponent(invite.id)}/disable`, { method: "POST" });
+    const payload = await readJsonResponse(response);
+    if (!response.ok) {
+      setError(payload.error ?? JSON.stringify(payload));
+      return;
+    }
+    await loadInvites();
+  }
+
+  if (me.user.role !== "admin") {
+    return (
+      <main className="admin-shell">
+        <header className="admin-header">
+          <div className="brand">
+            <div className="brand-mark">G2</div>
+            <div>
+              <h1>Admin</h1>
+              <p>Admin access required</p>
+            </div>
+          </div>
+          <a className="admin-link-button" href="/">
+            Back to app
+          </a>
+        </header>
+      </main>
+    );
+  }
+
+  return (
+    <main className="admin-shell">
+      <header className="admin-header">
+        <div className="brand">
+          <div className="brand-mark">G2</div>
+          <div>
+            <h1>Admin</h1>
+            <p>{me.user.email}</p>
+          </div>
+        </div>
+        <div className="admin-header-actions">
+          <a className="admin-link-button" href="/">
+            Back to app
+          </a>
+          {authEnabled && (
+            <button type="button" className="admin-link-button" onClick={() => void onLogout()}>
+              Logout
+            </button>
+          )}
+        </div>
+      </header>
+
+      <section className="admin-panel">
+        <div className="admin-tabs" role="tablist" aria-label="Admin tabs">
+          <button
+            type="button"
+            className={activeTab === "invites" ? "active" : ""}
+            onClick={() => setActiveTab("invites")}
+            role="tab"
+            aria-selected={activeTab === "invites"}
+          >
+            Invites
+          </button>
+          <button
+            type="button"
+            className={activeTab === "users" ? "active" : ""}
+            onClick={() => setActiveTab("users")}
+            role="tab"
+            aria-selected={activeTab === "users"}
+          >
+            Users
+          </button>
+        </div>
+
+        {error && <div className="form-error">{error}</div>}
+
+        {activeTab === "invites" ? (
+          <div className="admin-tab-body">
+            <form className="admin-create-form" onSubmit={(event) => void submit(event)}>
+              <input value={label} onChange={(event) => setLabel(event.target.value)} placeholder="Label" />
+              <select value={role} onChange={(event) => setRole(event.target.value)}>
+                <option value="user">User</option>
+                <option value="admin">Admin</option>
+              </select>
+              <button type="submit" disabled={busy}>
+                <UserPlus size={16} />
+                <span>{busy ? "Creating" : "Create"}</span>
+              </button>
+            </form>
+
+            <div className="admin-list">
+              {invites.length === 0 ? (
+                <p className="muted">No invites yet.</p>
+              ) : (
+                invites.map((invite) => (
+                  <article className="admin-row invite-admin-row" key={invite.id}>
+                    <div>
+                      <strong>{invite.label}</strong>
+                      <code>{invite.code}</code>
+                      <small>
+                        {invite.role} · used {invite.usedCount} · {invite.active ? "active" : "disabled"}
+                      </small>
+                    </div>
+                    {invite.active && (
+                      <button type="button" onClick={() => void disableInvite(invite)} title="Disable invite">
+                        <X size={16} />
+                      </button>
+                    )}
+                  </article>
+                ))
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="admin-tab-body">
+            <div className="admin-list">
+              {users.length === 0 ? (
+                <p className="muted">No users yet.</p>
+              ) : (
+                users.map((user) => (
+                  <article className="admin-row user-admin-row" key={user.id}>
+                    <div>
+                      <strong>{user.fullName}</strong>
+                      <span>{user.email}</span>
+                    </div>
+                    <div>
+                      <span>{user.role}</span>
+                      <small>{user.workspace?.displayName ?? "No workspace"}</small>
+                    </div>
+                    <div>
+                      <span>{user.invite ? user.invite.label : "First/admin seed"}</span>
+                      <small>{user.invite?.code ?? "No invite"}</small>
+                    </div>
+                    <time dateTime={new Date(user.createdAt * 1000).toISOString()}>
+                      {new Date(user.createdAt * 1000).toLocaleDateString()}
+                    </time>
+                  </article>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+      </section>
+    </main>
+  );
+}
+
+function LoadingScreen({ text, error, onRetry }: { text: string; error?: string; onRetry?: () => void }) {
+  return (
+    <main className="auth-shell">
+      <div className="auth-form">
+        <div className="brand auth-brand">
+          <div className="brand-mark">G2</div>
+          <div>
+            <h1>Agent Granny 2</h1>
+            <p>{text}</p>
+          </div>
+        </div>
+        {error && <div className="form-error">{error}</div>}
+        {onRetry && (
+          <button type="button" className="auth-switch" onClick={onRetry}>
+            Retry
+          </button>
+        )}
+      </div>
+    </main>
   );
 }
 
@@ -625,6 +973,15 @@ function appendMessageText(message: AppendMessage): string {
 
 function readError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+async function readJsonResponse(response: Response): Promise<any> {
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`Expected JSON from ${response.url}, got: ${text.slice(0, 120)}`);
+  }
 }
 
 function shortPath(path: string | undefined): string {

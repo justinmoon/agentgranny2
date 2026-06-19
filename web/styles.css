@@ -16,6 +16,8 @@ body {
 }
 
 button,
+input,
+select,
 textarea {
   font: inherit;
 }
@@ -79,12 +81,35 @@ button {
 
 .workspace-block span,
 .runtime-block span,
-.sessions h2 {
+.sessions h2,
+.invite-panel h2 {
   margin: 0;
   color: #687069;
   font-size: 0.76rem;
   font-weight: 700;
   text-transform: uppercase;
+}
+
+.workspace-block strong {
+  color: #2d3531;
+  font-size: 0.9rem;
+}
+
+input,
+select {
+  min-width: 0;
+  border: 1px solid #d5dbd3;
+  border-radius: 7px;
+  background: #fff;
+  color: #202322;
+  padding: 9px 10px;
+  outline: none;
+}
+
+input:focus,
+select:focus {
+  border-color: #72937f;
+  box-shadow: 0 0 0 3px #dcebe1;
 }
 
 .runtime-block strong {
@@ -144,6 +169,7 @@ code {
 }
 
 .actions button,
+.actions a,
 .session {
   min-height: 36px;
   border: 1px solid #d6dbd1;
@@ -157,10 +183,91 @@ code {
 }
 
 .actions button:hover,
+.actions a:hover,
 .session:hover,
 .session.active {
   border-color: #88988d;
   background: #f3f7f1;
+}
+
+.actions a {
+  color: #28302c;
+  text-decoration: none;
+}
+
+.actions button:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+
+.invite-panel {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+}
+
+.invite-panel form {
+  display: grid;
+  gap: 7px;
+}
+
+.invite-panel button {
+  min-height: 32px;
+  border: 1px solid #d6dbd1;
+  border-radius: 7px;
+  background: #fff;
+  color: #28302c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 7px 9px;
+}
+
+.invite-panel button:hover:not(:disabled) {
+  border-color: #88988d;
+  background: #f3f7f1;
+}
+
+.invite-list {
+  max-height: 180px;
+  overflow: auto;
+  display: grid;
+  gap: 6px;
+}
+
+.invite-row {
+  min-width: 0;
+  border: 1px solid #e1e5de;
+  border-radius: 7px;
+  background: #fff;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 8px;
+}
+
+.invite-row div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.invite-row strong,
+.invite-row small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.invite-row small,
+.inline-error {
+  color: #6d746e;
+  font-size: 0.76rem;
+}
+
+.inline-error {
+  color: #8b3022;
 }
 
 .sessions {
@@ -298,6 +405,215 @@ code {
   border-radius: 7px;
   background: #fff2ee;
   color: #8b3022;
+}
+
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.auth-form {
+  width: min(420px, 100%);
+  border: 1px solid #d9ddd5;
+  border-radius: 8px;
+  background: #fff;
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+}
+
+.auth-brand {
+  margin-bottom: 6px;
+}
+
+.auth-form button {
+  min-height: 40px;
+  border: 0;
+  border-radius: 7px;
+  background: #24463b;
+  color: white;
+  font-weight: 700;
+}
+
+.auth-form button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.auth-form .auth-switch {
+  border: 1px solid #d6dbd1;
+  background: #fff;
+  color: #28302c;
+  font-weight: 600;
+}
+
+.deploy-error {
+  border: 1px solid #e7b5a7;
+  border-radius: 7px;
+  background: #fff2ee;
+  color: #8b3022;
+  padding: 9px 10px;
+  font-size: 0.84rem;
+}
+
+.admin-shell {
+  min-height: 100vh;
+  background: #f6f6f3;
+  padding: 20px;
+}
+
+.admin-header {
+  max-width: 1040px;
+  margin: 0 auto 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.admin-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-link-button {
+  min-height: 36px;
+  border: 1px solid #d6dbd1;
+  border-radius: 7px;
+  background: #fff;
+  color: #28302c;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 12px;
+  text-decoration: none;
+}
+
+.admin-link-button:hover {
+  border-color: #88988d;
+  background: #f3f7f1;
+}
+
+.admin-panel {
+  max-width: 1040px;
+  margin: 0 auto;
+  border: 1px solid #d9ddd5;
+  border-radius: 8px;
+  background: #fff;
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+}
+
+.admin-tabs {
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid #e1e5de;
+  padding-bottom: 10px;
+}
+
+.admin-tabs button {
+  min-height: 34px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #59635c;
+  padding: 7px 12px;
+  font-weight: 700;
+}
+
+.admin-tabs button.active,
+.admin-tabs button:hover {
+  border-color: #d6dbd1;
+  background: #f3f7f1;
+  color: #202322;
+}
+
+.admin-tab-body {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-create-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 160px 150px;
+  gap: 10px;
+}
+
+.admin-create-form button,
+.admin-row button {
+  min-height: 38px;
+  border: 1px solid #d6dbd1;
+  border-radius: 7px;
+  background: #fff;
+  color: #28302c;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 12px;
+}
+
+.admin-create-form button:hover:not(:disabled),
+.admin-row button:hover {
+  border-color: #88988d;
+  background: #f3f7f1;
+}
+
+.admin-list {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-row {
+  min-width: 0;
+  border: 1px solid #e1e5de;
+  border-radius: 7px;
+  background: #fff;
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.invite-admin-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.user-admin-row {
+  grid-template-columns: minmax(180px, 1.2fr) minmax(160px, 1fr) minmax(190px, 1fr) 110px;
+  align-items: center;
+}
+
+.admin-row div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.admin-row strong,
+.admin-row span,
+.admin-row small,
+.admin-row time {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-row strong {
+  color: #202322;
+  font-size: 1rem;
+}
+
+.admin-row small,
+.admin-row time {
+  color: #6d746e;
+  font-size: 0.82rem;
 }
 
 .content-grid {
@@ -914,9 +1230,31 @@ code {
   .right-panel {
     height: min(620px, 70vh);
   }
+
+  .admin-create-form,
+  .user-admin-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 640px) {
+  .admin-shell {
+    padding: 12px;
+  }
+
+  .admin-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .admin-header-actions {
+    width: 100%;
+  }
+
+  .admin-link-button {
+    flex: 1;
+  }
+
   .topbar {
     align-items: flex-start;
     height: auto;

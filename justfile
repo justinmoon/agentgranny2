@@ -3,6 +3,9 @@ set dotenv-load := false
 dev:
     nix develop -c npm run dev
 
+dev-auth:
+    AGENTGRANNY_AUTH_ENABLED=1 AGENTGRANNY_STATE_DIR=.agentgranny2-auth AGENTGRANNY_DEV_AUTH_PASSWORD=password AGENTGRANNY_DEV_AUTH_USERS='mail@justinmoon.com|Justin Moon|admin,autumndomingo@gmail.com|Autumn Domingo|user' nix develop -c npm run dev
+
 install:
     nix develop -c npm install
 
@@ -11,6 +14,9 @@ build:
 
 typecheck:
     nix develop -c npm run typecheck
+
+smoke-auth:
+    nix develop -c npm run smoke:auth
 
 smoke-local:
     nix develop -c npm run smoke:local
@@ -66,11 +72,13 @@ deploy-stage:
       sleep 1
     done
 
-    curl -fsS -X POST http://127.0.0.1:7392/api/messages \
-      -H 'Content-Type: application/json' \
-      --data-binary '{"content":"Reply with exactly GRANNY_OK. Do not use tools."}' \
-      | tee /tmp/agentgranny2-deploy-smoke.json \
-      | grep -q 'GRANNY_OK'
+    me_status="$(curl -sS -o /tmp/agentgranny2-deploy-me.json -w '%{http_code}' http://127.0.0.1:7392/api/me)"
+    if [[ "${me_status}" != "401" ]]; then
+      echo "expected unauthenticated /api/me to return 401, got ${me_status}" >&2
+      cat /tmp/agentgranny2-deploy-me.json >&2
+      exit 1
+    fi
+    grep -q '"authEnabled":true' /tmp/agentgranny2-deploy-me.json
 
     echo "stage deploy ok"
     REMOTE

@@ -1,19 +1,47 @@
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { extname, join } from "node:path";
-import { pathToFileURL } from "node:url";
 import { existsSync, readFileSync } from "node:fs";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { extname, isAbsolute, join, relative, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { createServer as createViteServer, type ViteDevServer } from "vite";
+import {
+  CatalogStore,
+  SESSION_COOKIE,
+  clearSessionCookie,
+  sessionCookie,
+  type CatalogUser,
+  type CatalogWorkspace
+} from "./catalog.js";
 import { loadConfig } from "./config.js";
 import { DeploymentManager, deploymentPath, deploymentSlugFromHost, isAllowedDeploymentDomain } from "./deployments.js";
-import { PiBridge } from "./pi-bridge.js";
-import { PreviewManager, previewPath, requestHeaders } from "./previews.js";
+import { requestHeaders } from "./previews.js";
 import type { AppState } from "./types.js";
+import { WorkspaceRuntimeManager } from "./workspace-runtime.js";
 
 const config = loadConfig();
-const previews = new PreviewManager(config);
+const catalog = new CatalogStore(config);
 const deployments = new DeploymentManager(config);
-const bridge = new PiBridge(config, previews);
+const runtimes = new WorkspaceRuntimeManager(config, deployments);
 const isProduction = process.env.NODE_ENV === "production";
+
+if (config.authEnabled && !isProduction && process.env.AGENTGRANNY_DEV_AUTH_PASSWORD) {
+  const seedUsers =
+    process.env.AGENTGRANNY_DEV_AUTH_USERS ??
+    (process.env.AGENTGRANNY_DEV_AUTH_EMAIL
+      ? `${process.env.AGENTGRANNY_DEV_AUTH_EMAIL}|${process.env.AGENTGRANNY_DEV_AUTH_NAME ?? "Local Admin"}|admin`
+      : "");
+
+  for (const rawUser of seedUsers.split(",")) {
+    const [email, fullName, rawRole] = rawUser.split("|").map((part) => part.trim());
+    if (!email) continue;
+    const role: "admin" | "user" = rawRole === "user" ? "user" : "admin";
+    catalog.ensureSeedUser({
+      email,
+      fullName: fullName || email,
+      password: process.env.AGENTGRANNY_DEV_AUTH_PASSWORD,
+      role
+    });
+  }
+}
 
 let vite: ViteDevServer | undefined;
 
@@ -41,12 +69,21 @@ const server = createServer(async (req, res) => {
         {
           method: req.method ?? "GET",
           path: `${url.pathname}${url.search}`,
-          headers: requestHeaders(req.headers),
+          headers: deploymentRequestHeaders(req),
           body: body.length > 0 ? body : undefined
         },
         "host"
       );
       return sendProxyResponse(res, response.status, response.headers, req.method === "HEAD" ? undefined : response.body);
+    }
+
+    const deployment = deploymentPath(url.pathname);
+    if (deployment && config.deploymentBaseDomain) {
+      res.writeHead(302, {
+        Location: `https://${deployment.slug}.${config.deploymentBaseDomain}${deployment.upstreamPath}${url.search}`
+      });
+      res.end();
+      return;
     }
 
     if (url.pathname.startsWith("/deploy/") && !url.pathname.slice("/deploy/".length).includes("/")) {
@@ -55,28 +92,28 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    const deployment = deploymentPath(url.pathname);
     if (deployment) {
       const body = await readBody(req);
       const response = await deployments.fetch(deployment.slug, {
         method: req.method ?? "GET",
         path: `${deployment.upstreamPath}${url.search}`,
-        headers: requestHeaders(req.headers),
+        headers: deploymentRequestHeaders(req),
         body: body.length > 0 ? body : undefined
       });
       return sendProxyResponse(res, response.status, response.headers, req.method === "HEAD" ? undefined : response.body);
     }
 
-    if (url.pathname.startsWith("/preview/") && !url.pathname.slice("/preview/".length).includes("/")) {
+    const preview = workspacePreviewPath(url.pathname);
+    if (preview?.needsSlash) {
       res.writeHead(302, { Location: `${url.pathname}/${url.search}` });
       res.end();
       return;
     }
-
-    const preview = previewPath(url.pathname);
     if (preview) {
+      const workspace = authorizeWorkspace(req, preview.workspaceId);
+      const { bridge } = await runtimes.get(workspace);
       const body = await readBody(req);
-      const response = await bridge.fetchPreview(preview.id, {
+      const response = await bridge.fetchPreview(preview.previewId, {
         method: req.method ?? "GET",
         path: `${preview.upstreamPath}${url.search}`,
         headers: requestHeaders(req.headers),
@@ -89,95 +126,89 @@ const server = createServer(async (req, res) => {
       return sendJson(res, {
         ok: true,
         commit: config.appCommit,
-        workspace: config.workspace,
-        agentCwd: config.agentCwd,
+        authEnabled: config.authEnabled,
+        workspaceRoot: config.workspaceRoot,
         executor: config.executor
       });
     }
 
-    if (url.pathname === "/api/state" && req.method === "GET") {
-      return sendJson(res, await bridge.snapshot());
+    if (url.pathname === "/api/me" && req.method === "GET") {
+      const user = currentUser(req);
+      if (!user) return sendJson(res, { ok: false, authEnabled: config.authEnabled, error: "unauthorized" }, 401);
+      return sendJson(res, { ok: true, authEnabled: config.authEnabled, ...catalog.me(user) });
     }
 
-    if (url.pathname === "/api/sessions" && req.method === "GET") {
-      return sendJson(res, { sessions: await bridge.listSessions() });
-    }
-
-    if (url.pathname === "/api/previews" && req.method === "GET") {
-      return sendJson(res, { previews: bridge.listPreviews() });
-    }
-
-    if (url.pathname === "/api/deployments" && req.method === "GET") {
-      return sendJson(res, { deployments: await deployments.list() });
-    }
-
-    if (url.pathname === "/api/deployments" && req.method === "POST") {
+    if (url.pathname === "/api/auth/signup" && req.method === "POST") {
       const body = await readJson(req);
-      if (!body?.path || typeof body.path !== "string") {
-        return sendJson(res, { error: "path is required" }, 400);
-      }
-      try {
-        return sendJson(
-          res,
-          await deployments.publish({
-            path: body.path,
-            slug: body?.slug ? String(body.slug) : undefined,
-            port: body?.port === undefined || body?.port === "" ? undefined : Number.parseInt(String(body.port), 10)
-          })
-        );
-      } catch (error) {
-        return sendError(res, error, 400);
-      }
-    }
-
-    if (url.pathname.startsWith("/api/deployments/") && url.pathname.endsWith("/logs") && req.method === "GET") {
-      const slug = decodeURIComponent(url.pathname.slice("/api/deployments/".length, -"/logs".length));
-      const tail = Number.parseInt(url.searchParams.get("tail") ?? "200", 10);
-      return sendJson(res, { logs: await deployments.logs(slug, tail) });
-    }
-
-    if (url.pathname.startsWith("/api/deployments/") && req.method === "DELETE") {
-      const slug = decodeURIComponent(url.pathname.slice("/api/deployments/".length));
-      return sendJson(res, { removed: await deployments.remove(slug), deployments: await deployments.list() });
-    }
-
-    if (url.pathname === "/api/previews" && req.method === "POST") {
-      const body = await readJson(req);
-      const port = Number.parseInt(String(body?.port ?? ""), 10);
-      return sendJson(res, bridge.registerPreview(port, body?.name ? String(body.name) : undefined));
-    }
-
-    if (url.pathname.startsWith("/api/previews/") && req.method === "DELETE") {
-      const id = decodeURIComponent(url.pathname.slice("/api/previews/".length));
-      return sendJson(res, bridge.removePreview(id));
-    }
-
-    if (url.pathname === "/api/sessions" && req.method === "POST") {
-      const body = await readJson(req);
-      const state = await bridge.openSession(
-        body?.path ? { kind: "open", path: String(body.path) } : body?.new ? { kind: "new" } : { kind: "continue" }
+      const result = catalog.signup({
+        email: String(body?.email ?? ""),
+        fullName: String(body?.fullName ?? ""),
+        password: String(body?.password ?? ""),
+        inviteCode: typeof body?.inviteCode === "string" ? body.inviteCode : undefined
+      });
+      return sendJson(
+        res,
+        { ok: true, authEnabled: config.authEnabled, ...catalog.me(catalog.currentUser(`${SESSION_COOKIE}=${result.token}`)!) },
+        200,
+        { "Set-Cookie": sessionCookie(result.token, isSecureRequest(req)) }
       );
-      return sendJson(res, state);
     }
 
-    if (url.pathname === "/api/messages" && req.method === "POST") {
+    if (url.pathname === "/api/auth/login" && req.method === "POST") {
       const body = await readJson(req);
-      if (!body?.content || typeof body.content !== "string") {
-        return sendJson(res, { error: "content is required" }, 400);
-      }
-      return sendJson(res, await bridge.sendMessage(body.content));
+      const result = catalog.login({
+        email: String(body?.email ?? ""),
+        password: String(body?.password ?? "")
+      });
+      return sendJson(
+        res,
+        { ok: true, authEnabled: config.authEnabled, ...catalog.me(catalog.currentUser(`${SESSION_COOKIE}=${result.token}`)!) },
+        200,
+        { "Set-Cookie": sessionCookie(result.token, isSecureRequest(req)) }
+      );
     }
 
-    if (url.pathname === "/api/cancel" && req.method === "POST") {
-      return sendJson(res, await bridge.cancel());
+    if (url.pathname === "/api/auth/logout" && req.method === "POST") {
+      catalog.logout(req.headers.cookie);
+      return sendJson(res, { ok: true }, 200, { "Set-Cookie": clearSessionCookie() });
     }
 
-    if (url.pathname === "/api/runtime/resume-test" && req.method === "POST") {
-      return sendJson(res, await bridge.testRuntimeResume());
+    if (url.pathname === "/api/admin/invites" && req.method === "GET") {
+      const user = requireUser(req);
+      return sendJson(res, { ok: true, invites: catalog.invites(user) });
     }
 
-    if (url.pathname === "/api/events" && req.method === "GET") {
-      return handleSse(res);
+    if (url.pathname === "/api/admin/users" && req.method === "GET") {
+      const user = requireUser(req);
+      return sendJson(res, { ok: true, users: catalog.users(user) });
+    }
+
+    if (url.pathname === "/api/admin/invites" && req.method === "POST") {
+      const user = requireUser(req);
+      const body = await readJson(req);
+      const result = catalog.createInvite(user, {
+        label: typeof body?.label === "string" ? body.label : undefined,
+        role: typeof body?.role === "string" ? body.role : undefined
+      });
+      return sendJson(res, { ok: true, invite: result.invite, code: result.code });
+    }
+
+    const disableInvite = /^\/api\/admin\/invites\/([^/]+)\/disable$/.exec(url.pathname);
+    if (disableInvite && req.method === "POST") {
+      const user = requireUser(req);
+      return sendJson(res, { ok: true, invite: catalog.disableInvite(user, decodeURIComponent(disableInvite[1])) });
+    }
+
+    if (url.pathname === "/api/workspaces" && req.method === "GET") {
+      const user = requireUser(req);
+      return sendJson(res, { ok: true, workspaces: catalog.me(user).workspaces });
+    }
+
+    const workspaceRoute = workspaceApiPath(url.pathname);
+    if (workspaceRoute) {
+      const workspace = authorizeWorkspace(req, workspaceRoute.workspaceId);
+      const runtime = await runtimes.get(workspace);
+      return handleWorkspaceRoute(runtime, workspaceRoute.rest, url, req, res);
     }
 
     if (vite) {
@@ -193,7 +224,7 @@ const server = createServer(async (req, res) => {
 
     return serveStatic(url.pathname, res);
   } catch (error) {
-    sendError(res, error);
+    sendError(res, error, errorStatus(error));
   }
 });
 
@@ -204,13 +235,140 @@ if (!isProduction) {
   });
 }
 
-await bridge.init();
 await startServer();
 
 process.on("SIGINT", () => shutdown());
 process.on("SIGTERM", () => shutdown());
 
-function handleSse(res: ServerResponse): void {
+async function handleWorkspaceRoute(
+  runtime: Awaited<ReturnType<WorkspaceRuntimeManager["get"]>>,
+  rest: string,
+  url: URL,
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> {
+  const { bridge } = runtime;
+
+  if (rest === "/state" && req.method === "GET") {
+    return sendJson(res, await bridge.snapshot());
+  }
+
+  if (rest === "/sessions" && req.method === "GET") {
+    return sendJson(res, { sessions: await bridge.listSessions() });
+  }
+
+  if (rest === "/sessions" && req.method === "POST") {
+    const body = await readJson(req);
+    const state = await bridge.openSession(
+      body?.path ? { kind: "open", path: String(body.path) } : body?.new ? { kind: "new" } : { kind: "continue" }
+    );
+    return sendJson(res, state);
+  }
+
+  if (rest === "/previews" && req.method === "GET") {
+    return sendJson(res, { previews: bridge.listPreviews() });
+  }
+
+  if (rest === "/previews" && req.method === "POST") {
+    const body = await readJson(req);
+    const port = Number.parseInt(String(body?.port ?? ""), 10);
+    const name = typeof body?.name === "string" ? body.name.trim() : "";
+    if (!name) {
+      return sendJson(res, { error: "name is required" }, 400);
+    }
+    return sendJson(res, bridge.registerPreview(port, name));
+  }
+
+  if (rest === "/deployments" && req.method === "GET") {
+    return sendJson(res, {
+      deployments: await deployments.list({
+        workspaceId: runtime.config.workspaceId,
+        workspaceDirName: runtime.config.workspaceDirName
+      })
+    });
+  }
+
+  if (rest === "/deployments" && req.method === "POST") {
+    const body = await readJson(req);
+    if (!body?.path || typeof body.path !== "string") {
+      return sendJson(res, { error: "path is required" }, 400);
+    }
+    const rawPath = body.path.trim();
+    const projectPath = isAbsolute(rawPath) ? rawPath : resolve(runtime.config.agentCwd, rawPath);
+    try {
+      const scopedProjectPath = ensureWorkspaceProjectPath(projectPath, runtime.config.projectsDir);
+      return sendJson(
+        res,
+        await deployments.publish({
+          path: scopedProjectPath,
+          slug: body?.slug ? String(body.slug) : undefined,
+          port: body?.port === undefined || body?.port === "" ? undefined : Number.parseInt(String(body.port), 10),
+          workspaceId: runtime.config.workspaceId,
+          workspaceDirName: runtime.config.workspaceDirName
+        })
+      );
+    } catch (error) {
+      return sendError(res, error, 400);
+    }
+  }
+
+  if (rest.startsWith("/deployments/") && rest.endsWith("/logs") && req.method === "GET") {
+    const slug = decodeURIComponent(rest.slice("/deployments/".length, -"/logs".length));
+    const tail = Number.parseInt(url.searchParams.get("tail") ?? "200", 10);
+    return sendJson(res, {
+      logs: await deployments.logs(slug, tail, {
+        workspaceId: runtime.config.workspaceId,
+        workspaceDirName: runtime.config.workspaceDirName
+      })
+    });
+  }
+
+  if (rest.startsWith("/deployments/") && req.method === "DELETE") {
+    const slug = decodeURIComponent(rest.slice("/deployments/".length));
+    return sendJson(res, {
+      removed: await deployments.remove(slug, {
+        workspaceId: runtime.config.workspaceId,
+        workspaceDirName: runtime.config.workspaceDirName
+      }),
+      deployments: await deployments.list({
+        workspaceId: runtime.config.workspaceId,
+        workspaceDirName: runtime.config.workspaceDirName
+      })
+    });
+  }
+
+  const previewDelete = /^\/previews\/([^/]+)$/.exec(rest);
+  if (previewDelete && req.method === "DELETE") {
+    return sendJson(res, bridge.removePreview(decodeURIComponent(previewDelete[1])));
+  }
+
+  if (rest === "/messages" && req.method === "POST") {
+    const body = await readJson(req);
+    if (!body?.content || typeof body.content !== "string") {
+      return sendJson(res, { error: "content is required" }, 400);
+    }
+    return sendJson(res, await bridge.sendMessage(body.content));
+  }
+
+  if (rest === "/cancel" && req.method === "POST") {
+    return sendJson(res, await bridge.cancel());
+  }
+
+  if (rest === "/runtime/resume-test" && req.method === "POST") {
+    return sendJson(res, await bridge.testRuntimeResume());
+  }
+
+  if (rest === "/events" && req.method === "GET") {
+    return handleSse(bridge, res);
+  }
+
+  return sendError(res, new Error(`Not found: ${url.pathname}`), 404);
+}
+
+function handleSse(
+  bridge: Awaited<ReturnType<WorkspaceRuntimeManager["get"]>>["bridge"],
+  res: ServerResponse
+): void {
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache, no-transform",
@@ -227,6 +385,80 @@ function handleSse(res: ServerResponse): void {
   res.on("close", unsubscribe);
 }
 
+function currentUser(req: IncomingMessage): CatalogUser | null {
+  if (!config.authEnabled) return catalog.ensureDevUser().user;
+  return catalog.currentUser(req.headers.cookie);
+}
+
+function requireUser(req: IncomingMessage): CatalogUser {
+  const user = currentUser(req);
+  if (!user) throw Object.assign(new Error("unauthorized"), { status: 401 });
+  return user;
+}
+
+function authorizeWorkspace(req: IncomingMessage, workspaceId: string): CatalogWorkspace {
+  return catalog.authorizeWorkspace(requireUser(req), workspaceId);
+}
+
+function ensureWorkspaceProjectPath(projectPath: string, projectsDir: string): string {
+  const resolvedPath = resolve(projectPath);
+  const projectRelative = relative(resolve(projectsDir), resolvedPath);
+  if (projectRelative === "" || (!projectRelative.startsWith("..") && !isAbsolute(projectRelative))) {
+    return resolvedPath;
+  }
+  throw new Error(`Deployment path must be inside ${projectsDir}`);
+}
+
+function workspaceApiPath(pathname: string): { workspaceId: string; rest: string } | undefined {
+  const match = /^\/api\/workspaces\/([^/]+)(\/.*)?$/.exec(pathname);
+  if (!match) return undefined;
+  return { workspaceId: decodeURIComponent(match[1]), rest: match[2] || "" };
+}
+
+function workspacePreviewPath(
+  pathname: string
+): { workspaceId: string; previewId: string; upstreamPath: string; needsSlash?: boolean } | undefined {
+  const match = /^\/w\/([^/]+)\/preview\/([^/]+)(\/.*)?$/.exec(pathname);
+  if (!match) return undefined;
+  if (!match[3]) {
+    return {
+      workspaceId: decodeURIComponent(match[1]),
+      previewId: decodeURIComponent(match[2]),
+      upstreamPath: "/",
+      needsSlash: true
+    };
+  }
+  return {
+    workspaceId: decodeURIComponent(match[1]),
+    previewId: decodeURIComponent(match[2]),
+    upstreamPath: match[3]
+  };
+}
+
+function isSecureRequest(req: IncomingMessage): boolean {
+  return req.headers["x-forwarded-proto"] === "https";
+}
+
+function deploymentRequestHeaders(req: IncomingMessage): Record<string, string> {
+  const headers = requestHeaders(req.headers);
+  delete headers.cookie;
+  delete headers.authorization;
+  delete headers["proxy-authorization"];
+
+  const host = firstHeader(req.headers.host);
+  if (host) {
+    headers.host = host;
+    headers["x-forwarded-host"] = host;
+  }
+
+  headers["x-forwarded-proto"] = firstHeader(req.headers["x-forwarded-proto"]) || (isSecureRequest(req) ? "https" : "http");
+  return headers;
+}
+
+function firstHeader(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
 async function readJson(req: IncomingMessage): Promise<any> {
   const body = await readBody(req);
   if (body.length === 0) return undefined;
@@ -241,8 +473,13 @@ async function readBody(req: IncomingMessage): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-function sendJson(res: ServerResponse, payload: unknown, status = 200): void {
-  res.writeHead(status, { "Content-Type": "application/json" });
+function sendJson(
+  res: ServerResponse,
+  payload: unknown,
+  status = 200,
+  headers: Record<string, string> = {}
+): void {
+  res.writeHead(status, { "Content-Type": "application/json", ...headers });
   res.end(JSON.stringify(payload));
 }
 
@@ -265,6 +502,23 @@ function sendError(res: ServerResponse, error: unknown, status = 500): void {
   sendJson(res, { error: message }, status);
 }
 
+function errorStatus(error: unknown): number {
+  const explicit = typeof error === "object" && error && "status" in error ? Number((error as { status?: unknown }).status) : 0;
+  if (explicit) return explicit;
+  const message = error instanceof Error ? error.message : String(error);
+  if (message === "forbidden" || message === "admin required") return 403;
+  if (message.includes("not found")) return 404;
+  if (message === "unauthorized") return 401;
+  if (
+    message.includes("required") ||
+    message.includes("invalid") ||
+    message.includes("registered")
+  ) {
+    return 400;
+  }
+  return 500;
+}
+
 function serveStatic(pathname: string, res: ServerResponse): void {
   const relative = pathname === "/" ? "/index.html" : pathname;
   const filePath = join(config.rootDir, "dist/client", relative);
@@ -283,7 +537,7 @@ function serveStatic(pathname: string, res: ServerResponse): void {
 }
 
 async function shutdown(): Promise<void> {
-  bridge.dispose();
+  runtimes.dispose();
   await vite?.close();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 1000).unref();
@@ -302,6 +556,8 @@ async function startServer(): Promise<void> {
   }
 
   console.log(`agentgranny2 listening on http://${config.host}:${config.port}`);
+  console.log(`authEnabled=${config.authEnabled}`);
+  console.log(`workspaceRoot=${config.workspaceRoot}`);
   console.log(`workspace=${config.workspace}`);
   console.log(`agentCwd=${config.agentCwd}`);
   console.log(`executor=${config.executor}`);
