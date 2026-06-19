@@ -14,6 +14,7 @@ import {
 import { loadConfig } from "./config.js";
 import { DeploymentManager, deploymentPath, deploymentSlugFromHost, isAllowedDeploymentDomain } from "./deployments.js";
 import { requestHeaders } from "./previews.js";
+import { TelegramChannel } from "./telegram-channel.js";
 import type { AppState } from "./types.js";
 import { WorkspaceRuntimeManager } from "./workspace-runtime.js";
 
@@ -22,6 +23,7 @@ const catalog = new CatalogStore(config);
 const deployments = new DeploymentManager(config);
 const runtimes = new WorkspaceRuntimeManager(config, deployments);
 const isProduction = process.env.NODE_ENV === "production";
+let telegram: TelegramChannel | undefined;
 
 if (config.authEnabled && !isProduction && process.env.AGENTGRANNY_DEV_AUTH_PASSWORD) {
   const seedUsers =
@@ -127,6 +129,7 @@ const server = createServer(async (req, res) => {
         ok: true,
         commit: config.appCommit,
         authEnabled: config.authEnabled,
+        telegramEnabled: Boolean(telegram),
         workspaceRoot: config.workspaceRoot,
         executor: config.executor
       });
@@ -236,6 +239,7 @@ if (!isProduction) {
 }
 
 await startServer();
+startTelegramChannel();
 
 process.on("SIGINT", () => shutdown());
 process.on("SIGTERM", () => shutdown());
@@ -537,10 +541,36 @@ function serveStatic(pathname: string, res: ServerResponse): void {
 }
 
 async function shutdown(): Promise<void> {
+  await telegram?.stop();
   runtimes.dispose();
   await vite?.close();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 1000).unref();
+}
+
+function startTelegramChannel(): void {
+  const token = config.telegram.botToken?.trim();
+  if (!token) return;
+
+  const workspace = resolveTelegramWorkspace();
+  if (!workspace) return;
+
+  telegram = new TelegramChannel({ token, workspace, runtimes });
+  telegram.start();
+}
+
+function resolveTelegramWorkspace(): CatalogWorkspace | undefined {
+  const configuredWorkspaceId = config.telegram.workspaceId?.trim();
+  if (configuredWorkspaceId) {
+    const workspace = catalog.read().workspaces.find((candidate) => candidate.id === configuredWorkspaceId);
+    if (!workspace) throw new Error(`AGENTGRANNY_TELEGRAM_WORKSPACE_ID not found: ${configuredWorkspaceId}`);
+    return workspace;
+  }
+
+  if (!config.authEnabled) return catalog.ensureDevUser().workspace;
+
+  console.warn("AGENTGRANNY_TELEGRAM_BOT_TOKEN is set, but AGENTGRANNY_TELEGRAM_WORKSPACE_ID is not; Telegram disabled");
+  return undefined;
 }
 
 async function startServer(): Promise<void> {

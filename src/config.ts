@@ -24,6 +24,10 @@ export type AppConfig = {
   openRouterModel: string;
   openRouterEnvFile: string;
   openRouterApiKey?: string;
+  telegram: {
+    botToken?: string;
+    workspaceId?: string;
+  };
   rootDir: string;
   podman: {
     command: string;
@@ -43,7 +47,7 @@ export type AppConfig = {
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-function readOpenRouterKeyFile(path: string): string | undefined {
+function readEnvFileValue(path: string, name: string): string | undefined {
   if (!existsSync(path)) return undefined;
 
   const content = readFileSync(path, "utf8");
@@ -52,7 +56,7 @@ function readOpenRouterKeyFile(path: string): string | undefined {
     if (!line || line.startsWith("#")) continue;
 
     const match = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(line);
-    if (!match || match[1] !== "OPENROUTER_API_KEY") continue;
+    if (!match || match[1] !== name) continue;
 
     let value = match[2].trim();
     if (
@@ -64,7 +68,13 @@ function readOpenRouterKeyFile(path: string): string | undefined {
     return value;
   }
 
-  const rawKey = content.trim();
+  return undefined;
+}
+
+function readOpenRouterKeyFile(path: string): string | undefined {
+  const value = readEnvFileValue(path, "OPENROUTER_API_KEY");
+  if (value || !existsSync(path)) return value;
+  const rawKey = readFileSync(path, "utf8").trim();
   return rawKey && !rawKey.includes("\n") ? rawKey : undefined;
 }
 
@@ -106,6 +116,12 @@ export function loadConfig(): AppConfig {
   const agentCwd = resolve(process.env.AGENTGRANNY_AGENT_CWD ?? projectsDir);
   const openRouterEnvFile = resolve(process.env.AGENTGRANNY_OPENROUTER_ENV_FILE ?? `${rootDir}/.env`);
   const openRouterApiKey = process.env.OPENROUTER_API_KEY ?? readOpenRouterKeyFile(openRouterEnvFile);
+  const telegramBotToken =
+    process.env.AGENTGRANNY_TELEGRAM_BOT_TOKEN ??
+    readEnvFileValue(openRouterEnvFile, "AGENTGRANNY_TELEGRAM_BOT_TOKEN");
+  const telegramWorkspaceId =
+    process.env.AGENTGRANNY_TELEGRAM_WORKSPACE_ID ??
+    readEnvFileValue(openRouterEnvFile, "AGENTGRANNY_TELEGRAM_WORKSPACE_ID");
 
   if (openRouterApiKey && !process.env.OPENROUTER_API_KEY) {
     process.env.OPENROUTER_API_KEY = openRouterApiKey;
@@ -132,6 +148,10 @@ export function loadConfig(): AppConfig {
     openRouterModel: process.env.AGENTGRANNY_OPENROUTER_MODEL ?? "anthropic/claude-sonnet-4.5",
     openRouterEnvFile,
     openRouterApiKey,
+    telegram: {
+      botToken: telegramBotToken,
+      workspaceId: telegramWorkspaceId
+    },
     rootDir,
     podman: {
       command: process.env.AGENTGRANNY_PODMAN_COMMAND ?? "podman"
