@@ -193,10 +193,12 @@ in
         }
         // lib.optionalAttrs (cfg.openRouterKeyFile != null) {
           AGENTGRANNY_OPENROUTER_ENV_FILE = toString cfg.openRouterKeyFile;
-        };
+      };
       serviceConfig = {
+        Delegate = true;
         ExecStart = lib.getExe cfg.package;
         Group = cfg.group;
+        KillMode = "process";
         Restart = "on-failure";
         RestartSec = 3;
         Type = "simple";
