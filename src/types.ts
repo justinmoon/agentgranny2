@@ -37,6 +37,24 @@ export type PreviewService = {
   updatedAt: string;
 };
 
+export type DeploymentRecord = {
+  id: string;
+  slug: string;
+  name: string;
+  projectPath: string;
+  image: string;
+  container: string;
+  containerPort: number;
+  hostPort: number;
+  urlPath: string;
+  status: "building" | "running" | "failed" | "stopped";
+  createdAt: string;
+  updatedAt: string;
+  lastDeployAt?: string;
+  error?: string;
+  buildLog?: string;
+};
+
 export type AppState = {
   app: {
     commit?: string;

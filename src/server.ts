@@ -4,12 +4,14 @@ import { pathToFileURL } from "node:url";
 import { existsSync, readFileSync } from "node:fs";
 import { createServer as createViteServer, type ViteDevServer } from "vite";
 import { loadConfig } from "./config.js";
+import { DeploymentManager, deploymentPath } from "./deployments.js";
 import { PiBridge } from "./pi-bridge.js";
 import { PreviewManager, previewPath, requestHeaders } from "./previews.js";
 import type { AppState } from "./types.js";
 
 const config = loadConfig();
 const previews = new PreviewManager(config);
+const deployments = new DeploymentManager(config);
 const bridge = new PiBridge(config, previews);
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -26,6 +28,24 @@ await bridge.init();
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? `${config.host}:${config.port}`}`);
+
+    if (url.pathname.startsWith("/deploy/") && !url.pathname.slice("/deploy/".length).includes("/")) {
+      res.writeHead(302, { Location: `${url.pathname}/${url.search}` });
+      res.end();
+      return;
+    }
+
+    const deployment = deploymentPath(url.pathname);
+    if (deployment) {
+      const body = await readBody(req);
+      const response = await deployments.fetch(deployment.slug, {
+        method: req.method ?? "GET",
+        path: `${deployment.upstreamPath}${url.search}`,
+        headers: requestHeaders(req.headers),
+        body: body.length > 0 ? body : undefined
+      });
+      return sendProxyResponse(res, response.status, response.headers, req.method === "HEAD" ? undefined : response.body);
+    }
 
     if (url.pathname.startsWith("/preview/") && !url.pathname.slice("/preview/".length).includes("/")) {
       res.writeHead(302, { Location: `${url.pathname}/${url.search}` });
@@ -65,6 +85,40 @@ const server = createServer(async (req, res) => {
 
     if (url.pathname === "/api/previews" && req.method === "GET") {
       return sendJson(res, { previews: bridge.listPreviews() });
+    }
+
+    if (url.pathname === "/api/deployments" && req.method === "GET") {
+      return sendJson(res, { deployments: await deployments.list() });
+    }
+
+    if (url.pathname === "/api/deployments" && req.method === "POST") {
+      const body = await readJson(req);
+      if (!body?.path || typeof body.path !== "string") {
+        return sendJson(res, { error: "path is required" }, 400);
+      }
+      try {
+        return sendJson(
+          res,
+          await deployments.publish({
+            path: body.path,
+            slug: body?.slug ? String(body.slug) : undefined,
+            port: body?.port === undefined || body?.port === "" ? undefined : Number.parseInt(String(body.port), 10)
+          })
+        );
+      } catch (error) {
+        return sendError(res, error, 400);
+      }
+    }
+
+    if (url.pathname.startsWith("/api/deployments/") && url.pathname.endsWith("/logs") && req.method === "GET") {
+      const slug = decodeURIComponent(url.pathname.slice("/api/deployments/".length, -"/logs".length));
+      const tail = Number.parseInt(url.searchParams.get("tail") ?? "200", 10);
+      return sendJson(res, { logs: await deployments.logs(slug, tail) });
+    }
+
+    if (url.pathname.startsWith("/api/deployments/") && req.method === "DELETE") {
+      const slug = decodeURIComponent(url.pathname.slice("/api/deployments/".length));
+      return sendJson(res, { removed: await deployments.remove(slug), deployments: await deployments.list() });
     }
 
     if (url.pathname === "/api/previews" && req.method === "POST") {

@@ -11,12 +11,17 @@ export type AppConfig = {
   workspace: string;
   projectsDir: string;
   agentCwd: string;
+  stateDir: string;
   agentDir: string;
   sessionDir: string;
+  deploymentDir: string;
   openRouterModel: string;
   openRouterEnvFile: string;
   openRouterApiKey?: string;
   rootDir: string;
+  podman: {
+    command: string;
+  };
   smolvm: {
     command: string;
     name: string;
@@ -97,12 +102,17 @@ export function loadConfig(): AppConfig {
     workspace,
     projectsDir,
     agentCwd,
+    stateDir,
     agentDir: resolve(process.env.AGENTGRANNY_AGENT_DIR ?? `${stateDir}/pi`),
     sessionDir: resolve(process.env.AGENTGRANNY_SESSION_DIR ?? `${stateDir}/sessions`),
+    deploymentDir: resolve(process.env.AGENTGRANNY_DEPLOYMENT_DIR ?? `${stateDir}/deployments`),
     openRouterModel: process.env.AGENTGRANNY_OPENROUTER_MODEL ?? "anthropic/claude-sonnet-4.5",
     openRouterEnvFile,
     openRouterApiKey,
     rootDir,
+    podman: {
+      command: process.env.AGENTGRANNY_PODMAN_COMMAND ?? "podman"
+    },
     smolvm: {
       command: process.env.AGENTGRANNY_SMOLVM_COMMAND ?? "smolvm",
       name: process.env.AGENTGRANNY_SMOLVM_NAME ?? "agentgranny2-default",

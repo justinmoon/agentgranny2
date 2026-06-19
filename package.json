@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit",
     "start": "NODE_ENV=production tsx src/server.ts",
     "smoke:local": "AGENTGRANNY_EXECUTOR=local tsx scripts/smoke-local.ts",
-    "smoke:smolvm": "AGENTGRANNY_EXECUTOR=smolvm tsx scripts/smoke-smolvm.ts"
+    "smoke:smolvm": "AGENTGRANNY_EXECUTOR=smolvm tsx scripts/smoke-smolvm.ts",
+    "smoke:deploy": "AGENTGRANNY_EXECUTOR=local tsx scripts/smoke-deploy.ts"
   },
   "dependencies": {
     "@assistant-ui/react": "0.12.19",

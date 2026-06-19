@@ -18,6 +18,7 @@ import {
   Play,
   Plus,
   RefreshCw,
+  Rocket,
   Send,
   SquarePen,
   Terminal,
@@ -26,7 +27,8 @@ import {
 } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import type { AppState, ChatMessage, PreviewService, SessionSummary } from "../src/types.js";
+import type { AppState, ChatMessage, DeploymentRecord, PreviewService, SessionSummary } from "../src/types.js";
+import { DeployPane } from "./DeployPane.js";
 import "./styles.css";
 
 const emptyState: AppState = {
@@ -51,12 +53,13 @@ const emptyState: AppState = {
 
 type RightPanelTab = {
   id: string;
-  type: "preview" | "events";
+  type: "preview" | "deploy" | "events";
   title: string;
 };
 
 const initialRightTabs: RightPanelTab[] = [
   { id: "preview-1", type: "preview", title: "Preview" },
+  { id: "deploy-1", type: "deploy", title: "Deploy" },
   { id: "events-1", type: "events", title: "Events" }
 ];
 
@@ -69,6 +72,9 @@ function App() {
   const [rightTabs, setRightTabs] = useState<RightPanelTab[]>(initialRightTabs);
   const [activeRightTabId, setActiveRightTabId] = useState(initialRightTabs[0].id);
   const [newTabMenuOpen, setNewTabMenuOpen] = useState(false);
+  const [deployments, setDeployments] = useState<DeploymentRecord[]>([]);
+  const [deployLog, setDeployLog] = useState("");
+  const [deployError, setDeployError] = useState<string | undefined>();
 
   const refresh = useCallback(async () => {
     const response = await fetch("/api/state");
@@ -76,8 +82,15 @@ function App() {
     setState(next);
   }, []);
 
+  const refreshDeployments = useCallback(async () => {
+    const response = await fetch("/api/deployments");
+    const payload = (await response.json()) as { deployments: DeploymentRecord[] };
+    setDeployments(payload.deployments);
+  }, []);
+
   useEffect(() => {
     void refresh().catch((err) => setError(readError(err)));
+    void refreshDeployments().catch((err) => setDeployError(readError(err)));
 
     const events = new EventSource("/api/events");
     events.addEventListener("state", (event) => {
@@ -86,7 +99,7 @@ function App() {
     });
     events.onerror = () => setError("Event stream disconnected. Refresh or restart the dev server.");
     return () => events.close();
-  }, [refresh]);
+  }, [refresh, refreshDeployments]);
 
   const messages = useMemo(() => state.messages.map(toThreadMessage), [state.messages]);
   const selectedPreview = useMemo(
@@ -151,7 +164,7 @@ function App() {
   }
 
   function addRightTab(type: RightPanelTab["type"]) {
-    const title = type === "preview" ? "Preview" : "Events";
+    const title = type === "preview" ? "Preview" : type === "deploy" ? "Deploy" : "Events";
     const id = `${type}-${Date.now().toString(36)}`;
     const tab = { id, type, title };
     setRightTabs((tabs) => [...tabs, tab]);
@@ -328,10 +341,20 @@ function App() {
                           role="tab"
                           aria-selected={tab.id === activeRightTab?.id}
                         >
-                          {tab.type === "events" ? <FileJson size={14} /> : <Monitor size={14} />}
+                          {tab.type === "events" ? (
+                            <FileJson size={14} />
+                          ) : tab.type === "deploy" ? (
+                            <Rocket size={14} />
+                          ) : (
+                            <Monitor size={14} />
+                          )}
                           <span>{tab.title}</span>
                           <span className="right-tab-count">
-                            {tab.type === "events" ? state.events.length : state.previews.length}
+                            {tab.type === "events"
+                              ? state.events.length
+                              : tab.type === "deploy"
+                                ? deployments.length
+                                : state.previews.length}
                           </span>
                         </button>
                         <button
@@ -360,6 +383,10 @@ function App() {
                           <Monitor size={14} />
                           <span>Preview</span>
                         </button>
+                        <button type="button" onClick={() => addRightTab("deploy")}>
+                          <Rocket size={14} />
+                          <span>Deploy</span>
+                        </button>
                         <button type="button" onClick={() => addRightTab("events")}>
                           <FileJson size={14} />
                           <span>Events</span>
@@ -380,6 +407,45 @@ function App() {
                 <div className="right-panel-body">
                   {activeRightTab?.type === "events" ? (
                     <EventLog events={state.events} />
+                  ) : activeRightTab?.type === "deploy" ? (
+                    <DeployPane
+                      deployments={deployments}
+                      error={deployError}
+                      log={deployLog}
+                      onPublish={async (input) => {
+                        setDeployError(undefined);
+                        setDeployLog("");
+                        const response = await fetch("/api/deployments", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify(input)
+                        });
+                        const payload = await response.json();
+                        if (!response.ok) {
+                          await refreshDeployments();
+                          throw new Error(payload.error ?? JSON.stringify(payload));
+                        }
+                        await refreshDeployments();
+                      }}
+                      onDelete={async (deployment) => {
+                        setDeployError(undefined);
+                        const response = await fetch(`/api/deployments/${encodeURIComponent(deployment.slug)}`, {
+                          method: "DELETE"
+                        });
+                        const payload = await response.json();
+                        if (!response.ok) throw new Error(payload.error ?? JSON.stringify(payload));
+                        setDeployments(payload.deployments ?? []);
+                        setDeployLog("");
+                      }}
+                      onLogs={async (deployment) => {
+                        setDeployError(undefined);
+                        const response = await fetch(`/api/deployments/${encodeURIComponent(deployment.slug)}/logs`);
+                        const payload = await response.json();
+                        if (!response.ok) throw new Error(payload.error ?? JSON.stringify(payload));
+                        setDeployLog(payload.logs ?? "");
+                      }}
+                      onError={setDeployError}
+                    />
                   ) : (
                     <PreviewPane
                       previews={state.previews}

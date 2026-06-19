@@ -113,6 +113,8 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    virtualisation.podman.enable = true;
+
     users.groups.${cfg.group} = { };
     users.users.${cfg.user} = {
       isSystemUser = true;
@@ -144,6 +146,7 @@ in
         pkgs.git
         pkgs.go-containerregistry
         pkgs.gnutar
+        pkgs.podman
       ];
       environment =
         {
@@ -151,6 +154,7 @@ in
           AGENTGRANNY_EXECUTOR = "smolvm";
           AGENTGRANNY_HOST = cfg.host;
           AGENTGRANNY_OPENROUTER_MODEL = cfg.model;
+          AGENTGRANNY_PODMAN_COMMAND = lib.getExe pkgs.podman;
           AGENTGRANNY_PORT = toString cfg.port;
           AGENTGRANNY_SESSION_DIR = "${cfg.stateDir}/app/sessions";
           AGENTGRANNY_SMOLVM_COMMAND = lib.getExe cfg.smolvm.package;

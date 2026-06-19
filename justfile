@@ -18,6 +18,9 @@ smoke-local:
 smoke-smolvm:
     nix develop -c npm run smoke:smolvm
 
+smoke-deploy:
+    nix develop -c npm run smoke:deploy
+
 start:
     nix develop -c npm run start
 

@@ -18,6 +18,7 @@
             git
             just
             nodejs_24
+            podman
           ];
 
           shellHook = ''
