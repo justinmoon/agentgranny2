@@ -8,6 +8,11 @@
 
 let
   cfg = config.services.agentgranny2;
+  uidmapWrappers = pkgs.runCommand "agentgranny2-uidmap-wrappers" { } ''
+    mkdir -p "$out/bin"
+    ln -s /run/wrappers/bin/newuidmap "$out/bin/newuidmap"
+    ln -s /run/wrappers/bin/newgidmap "$out/bin/newgidmap"
+  '';
 in
 {
   options.services.agentgranny2 = {
@@ -148,6 +153,7 @@ in
       wants = [ "network-online.target" ];
       path = [
         cfg.smolvm.package
+        uidmapWrappers
         pkgs.curl
         pkgs.e2fsprogs
         pkgs.file
