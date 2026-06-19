@@ -1,5 +1,4 @@
 {
-  autoPatchelfHook,
   e2fsprogs,
   fetchurl,
   file,
@@ -7,6 +6,7 @@
   gnutar,
   lib,
   makeWrapper,
+  patchelf,
   stdenv,
 }:
 
@@ -26,6 +26,7 @@ let
     sources.${stdenv.hostPlatform.system}
       or (throw "smolvm ${version} release is not available for ${stdenv.hostPlatform.system}");
   releaseName = "smolvm-${version}-${source.suffix}";
+  hostLibPath = lib.makeLibraryPath [ stdenv.cc.cc.lib ];
 in
 stdenv.mkDerivation {
   pname = "smolvm";
@@ -38,7 +39,7 @@ stdenv.mkDerivation {
 
   sourceRoot = releaseName;
 
-  nativeBuildInputs = [ makeWrapper autoPatchelfHook ];
+  nativeBuildInputs = [ makeWrapper patchelf ];
 
   installPhase = ''
     runHook preInstall
@@ -46,6 +47,13 @@ stdenv.mkDerivation {
     mkdir -p "$out/bin" "$out/share/smolvm"
     cp -R . "$out/share/smolvm/"
     chmod -R u+w "$out/share/smolvm"
+
+    patchelf \
+      --set-interpreter ${stdenv.cc.bintools.dynamicLinker} \
+      --set-rpath "${hostLibPath}:$out/share/smolvm/lib" \
+      "$out/share/smolvm/smolvm-bin"
+    patchelf --set-rpath "${hostLibPath}:$out/share/smolvm/lib" "$out/share/smolvm/lib/libkrun.so"
+    patchelf --set-rpath "${hostLibPath}:$out/share/smolvm/lib" "$out/share/smolvm/lib/libkrunfw.so.5.3.0"
 
     makeWrapper "$out/share/smolvm/smolvm-bin" "$out/bin/smolvm" \
       --set SMOLVM_AGENT_ROOTFS "$out/share/smolvm/agent-rootfs" \
