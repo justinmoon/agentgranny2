@@ -21,6 +21,9 @@ smoke-auth:
 smoke-cli:
     nix develop -c npm run smoke:cli
 
+smoke-web-search:
+    nix develop -c npm run smoke:web-search
+
 smoke-local:
     nix develop -c npm run smoke:local
 

@@ -10,6 +10,7 @@
     "start": "NODE_ENV=production tsx src/server.ts",
     "smoke:auth": "tsx scripts/smoke-auth.ts && tsx scripts/smoke-workspace-catalog.ts && tsx scripts/smoke-telegram-catalog.ts",
     "smoke:cli": "tsx scripts/smoke-mom-cli.ts",
+    "smoke:web-search": "tsx scripts/smoke-web-search.ts",
     "smoke:local": "AGENTMOM_EXECUTOR=local tsx scripts/smoke-local.ts",
     "smoke:smolvm": "AGENTMOM_EXECUTOR=smolvm tsx scripts/smoke-smolvm.ts",
     "smoke:deploy": "AGENTMOM_EXECUTOR=local tsx scripts/smoke-deploy.ts"

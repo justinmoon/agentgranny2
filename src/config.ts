@@ -24,6 +24,7 @@ export type AppConfig = {
   openRouterModel: string;
   openRouterEnvFile: string;
   openRouterApiKey?: string;
+  braveApiKey?: string;
   telegram: {
     botToken?: string;
   };
@@ -115,6 +116,11 @@ export function loadConfig(): AppConfig {
   const agentCwd = resolve(process.env.AGENTMOM_AGENT_CWD ?? projectsDir);
   const openRouterEnvFile = resolve(process.env.AGENTMOM_OPENROUTER_ENV_FILE ?? `${rootDir}/.env`);
   const openRouterApiKey = process.env.OPENROUTER_API_KEY ?? readOpenRouterKeyFile(openRouterEnvFile);
+  const braveApiKey =
+    process.env.BRAVE_API_KEY ??
+    process.env.BRAVE_SEARCH_API_KEY ??
+    readEnvFileValue(openRouterEnvFile, "BRAVE_API_KEY") ??
+    readEnvFileValue(openRouterEnvFile, "BRAVE_SEARCH_API_KEY");
   const telegramBotToken =
     process.env.AGENTMOM_TELEGRAM_BOT_TOKEN ??
     readEnvFileValue(openRouterEnvFile, "AGENTMOM_TELEGRAM_BOT_TOKEN");
@@ -144,6 +150,7 @@ export function loadConfig(): AppConfig {
     openRouterModel: process.env.AGENTMOM_OPENROUTER_MODEL ?? "anthropic/claude-sonnet-4.5",
     openRouterEnvFile,
     openRouterApiKey,
+    braveApiKey,
     telegram: {
       botToken: telegramBotToken
     },

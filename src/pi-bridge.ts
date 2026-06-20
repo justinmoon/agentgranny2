@@ -35,12 +35,13 @@ import {
 } from "./message-attachments.js";
 import { SmolvmRuntime } from "./smolvm.js";
 import type { AppState, ChatMessage, MessageAttachment, SessionSummary, UiEvent } from "./types.js";
+import { createWebSearchTool } from "./web-search.js";
 
 type PiMessage = UserMessage | AssistantMessage;
 type StateListener = (state: AppState) => void;
 type SendMessageInput = string | { content: string; attachments?: MessageAttachment[] };
 
-const ACTIVE_TOOLS = ["read", "bash", "edit", "write"];
+const ACTIVE_TOOLS = ["read", "bash", "edit", "write", "web_search"];
 
 export class PiBridge {
   private session?: AgentSession;
@@ -388,6 +389,7 @@ export class PiBridge {
     }
 
     return [
+      createWebSearchTool(this.config),
       createBashToolDefinition(this.config.agentCwd, {
         commandPrefix: `export PATH=${shellQuote(guestBinDir)}:$PATH`,
         operations: this.withPreviewRegistration(operations)
