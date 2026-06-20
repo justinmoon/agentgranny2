@@ -1,0 +1,4 @@
+{
+  "previewSentinel": "__AGENTMOM_EXPOSE__",
+  "deploySentinel": "__AGENTMOM_DEPLOY__"
+}

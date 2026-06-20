@@ -1,6 +1,7 @@
-import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { posix as pathPosix } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { AppConfig } from "./config.js";
 import {
   cleanResponseHeaders,
@@ -11,8 +12,16 @@ import {
 } from "./proxy-utils.js";
 import type { PreviewService } from "./types.js";
 
-export const PREVIEW_SENTINEL = "__AGENTMOM_EXPOSE__";
-export const DEPLOY_SENTINEL = "__AGENTMOM_DEPLOY__";
+type MomCliProtocol = {
+  previewSentinel: string;
+  deploySentinel: string;
+};
+
+const MOM_CLI_SOURCE = fileURLToPath(new URL("./mom-cli.cjs", import.meta.url));
+const MOM_CLI_PROTOCOL_SOURCE = fileURLToPath(new URL("./mom-cli-protocol.json", import.meta.url));
+const MOM_CLI_PROTOCOL = JSON.parse(readFileSync(MOM_CLI_PROTOCOL_SOURCE, "utf8")) as MomCliProtocol;
+export const PREVIEW_SENTINEL = MOM_CLI_PROTOCOL.previewSentinel;
+export const DEPLOY_SENTINEL = MOM_CLI_PROTOCOL.deploySentinel;
 
 export type PreviewFetchRequest = {
   method: string;
@@ -119,7 +128,8 @@ export class PreviewManager {
     const hostBinDir = join(this.config.projectsDir, ".agentmom", "bin");
     const hostCliPath = join(hostBinDir, "mom");
     mkdirSync(hostBinDir, { recursive: true });
-    writeFileSync(hostCliPath, previewCliSource(), "utf8");
+    copyFileSync(MOM_CLI_SOURCE, hostCliPath);
+    copyFileSync(MOM_CLI_PROTOCOL_SOURCE, join(hostBinDir, "mom-cli-protocol.json"));
     chmodSync(hostCliPath, 0o755);
 
     const guestBinDir =
@@ -172,74 +182,4 @@ function rewritePreviewResponse(service: PreviewService, response: PreviewFetchR
     headers,
     body
   };
-}
-
-function previewCliSource(): string {
-  return `#!/usr/bin/env node
-const previewSentinel = ${JSON.stringify(PREVIEW_SENTINEL)};
-const deploySentinel = ${JSON.stringify(DEPLOY_SENTINEL)};
-const [command, ...args] = process.argv.slice(2);
-
-function fail(message) {
-  console.error(message);
-  process.exit(1);
-}
-
-function usage() {
-  fail("Usage:\\n  mom expose <port> <name>\\n  mom deploy --cwd <absolute-path> --port <port> --slug <slug>");
-}
-
-function parsePort(value) {
-  const port = Number.parseInt(value || "", 10);
-  if (!Number.isInteger(port) || port < 1 || port > 65535) usage();
-  return port;
-}
-
-function readRequiredOption(name) {
-  const prefix = "--" + name + "=";
-  const equalsArg = args.find((arg) => arg.startsWith(prefix));
-  if (equalsArg) return equalsArg.slice(prefix.length).trim();
-
-  const index = args.indexOf("--" + name);
-  if (index === -1 || index + 1 >= args.length) usage();
-  const value = args[index + 1].trim();
-  if (!value || value.startsWith("--")) usage();
-  return value;
-}
-
-function assertNoUnexpectedDeployArgs() {
-  const allowed = new Set(["--cwd", "--port", "--slug"]);
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-    if (arg.startsWith("--cwd=") || arg.startsWith("--port=") || arg.startsWith("--slug=")) continue;
-    if (!allowed.has(arg)) usage();
-    index += 1;
-  }
-}
-
-if (command === "expose") {
-  const port = parsePort(args[0]);
-  const name = args.slice(1).join(" ").trim();
-  if (!name) usage();
-
-  console.log(previewSentinel + JSON.stringify({ port, name }));
-  console.log("Preview exposed: " + name + " on port " + port);
-  process.exit(0);
-}
-
-if (command === "deploy") {
-  assertNoUnexpectedDeployArgs();
-  const cwd = readRequiredOption("cwd");
-  const slug = readRequiredOption("slug");
-  const port = parsePort(readRequiredOption("port"));
-  if (!cwd.startsWith("/")) fail("mom deploy requires --cwd to be an absolute path");
-  if (!slug) usage();
-
-  console.log(deploySentinel + JSON.stringify({ cwd, slug, port }));
-  console.log("Deployment requested: " + slug + " from " + cwd + " on port " + port);
-  process.exit(0);
-}
-
-usage();
-`;
 }

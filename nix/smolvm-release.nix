@@ -11,15 +11,15 @@
 }:
 
 let
-  version = "1.1.1";
+  version = "1.1.2";
   sources = {
     aarch64-linux = {
       suffix = "linux-arm64";
-      hash = "sha256-J5BFB6NqRXFUmbGmH73ztkaBZeKJh1owEYwIY+uCzvM=";
+      hash = "sha256-olTcWFhOijInfkkq1yun0SSOYytpALotv50eV9IKbV8=";
     };
     x86_64-linux = {
       suffix = "linux-x86_64";
-      hash = "sha256-7pn6ibMcWN1uiWK3BrXzK5PTBXdlfC9liNWJWRIWROs=";
+      hash = "sha256-MCYuRlyDjGx9r0CmxA7tC7hLQPQF7LcjDi9lZomOyVY=";
     };
   };
   source =

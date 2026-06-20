@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { createServer, type Server } from "node:net";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
-import { spawn } from "node:child_process";
 import type { AppConfig } from "./config.js";
+import { type DeploymentRouteMode, slugify } from "./deployment-routing.js";
+import { allocatePort, runCommand, sleep, truncateLog } from "./process-utils.js";
 import type { DeploymentRecord } from "./types.js";
 import type { PreviewFetchRequest, PreviewFetchResponse } from "./previews.js";
 import {
@@ -15,8 +15,6 @@ import {
 type DeploymentState = {
   deployments: DeploymentRecord[];
 };
-
-export type DeploymentRouteMode = "path" | "host";
 
 export type DeploymentScope = {
   workspaceId?: string;
@@ -425,95 +423,6 @@ export class DeploymentManager {
   }
 }
 
-export function deploymentPath(pathname: string): { slug: string; upstreamPath: string } | undefined {
-  const prefix = "/deploy/";
-  if (!pathname.startsWith(prefix)) return undefined;
-
-  const rest = pathname.slice(prefix.length);
-  const slash = rest.indexOf("/");
-  if (slash === -1) {
-    if (!rest) return undefined;
-    return { slug: rest, upstreamPath: "/" };
-  }
-
-  const slug = rest.slice(0, slash);
-  if (!slug) return undefined;
-  const upstreamPath = `/${rest.slice(slash + 1)}`;
-  return { slug, upstreamPath };
-}
-
-export function deploymentSlugFromHost(hostHeader: string | undefined, baseDomain: string | undefined): string | undefined {
-  if (!hostHeader || !baseDomain) return undefined;
-
-  const host = hostHeader.split(":")[0]?.toLowerCase().replace(/\.$/, "");
-  const base = baseDomain.toLowerCase().replace(/\.$/, "");
-  if (!host || host === base || !host.endsWith(`.${base}`)) return undefined;
-
-  const slug = host.slice(0, -(base.length + 1));
-  if (!slug || slug.includes(".")) return undefined;
-  return slugify(slug) === slug ? slug : undefined;
-}
-
-export function isAllowedDeploymentDomain(domain: string | undefined, baseDomain: string | undefined): boolean {
-  if (!domain || !baseDomain) return false;
-
-  const host = domain.split(":")[0]?.toLowerCase().replace(/\.$/, "");
-  const base = baseDomain.toLowerCase().replace(/\.$/, "");
-  if (!host) return false;
-  return host === base || deploymentSlugFromHost(host, base) !== undefined;
-}
-
-type CommandResult = {
-  exitCode: number;
-  output: string;
-};
-
-function runCommand(
-  command: string,
-  args: string[],
-  options: {
-    cwd?: string;
-    allowFailure?: boolean;
-  } = {}
-): Promise<CommandResult> {
-  return new Promise((resolvePromise, reject) => {
-    const child = spawn(command, args, {
-      cwd: options.cwd,
-      env: process.env,
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true
-    });
-    const chunks: Buffer[] = [];
-
-    child.stdout.on("data", (data: Buffer) => chunks.push(data));
-    child.stderr.on("data", (data: Buffer) => chunks.push(data));
-    child.on("error", reject);
-    child.on("close", (exitCode) => {
-      const code = exitCode ?? 1;
-      const output = Buffer.concat(chunks).toString("utf8");
-      if (code !== 0 && !options.allowFailure) {
-        reject(new Error(`${command} ${args.join(" ")} failed (${code}): ${truncateLog(output)}`));
-        return;
-      }
-      resolvePromise({ exitCode: code, output });
-    });
-  });
-}
-
-function allocatePort(): Promise<number> {
-  return new Promise((resolvePromise, reject) => {
-    const server: Server = createServer();
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      server.close(() => {
-        if (address && typeof address === "object") resolvePromise(address.port);
-        else reject(new Error("Could not allocate host port"));
-      });
-    });
-    server.on("error", reject);
-  });
-}
-
 function rewriteDeploymentResponse(
   deployment: DeploymentRecord,
   response: PreviewFetchResponse,
@@ -563,20 +472,4 @@ function rewriteLocationHeader(
   } catch {
     // Relative redirects like "next" are already relative to /deploy/<slug>/.
   }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
-}
-
-function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48);
-}
-
-function truncateLog(value: string, max = 24000): string {
-  return value.length > max ? `${value.slice(-max)}\n[truncated]` : value;
 }

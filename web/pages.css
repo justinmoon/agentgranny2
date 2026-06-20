@@ -321,3 +321,29 @@
   color: #6d746e;
   font-size: 0.82rem;
 }
+
+@media (max-width: 980px) {
+  .admin-create-form,
+  .user-admin-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .admin-shell {
+    padding: 12px;
+  }
+
+  .admin-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .admin-header-actions {
+    width: 100%;
+  }
+
+  .admin-link-button {
+    flex: 1;
+  }
+}

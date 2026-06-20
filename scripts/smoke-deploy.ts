@@ -20,7 +20,8 @@ writeApp("DEPLOY_SMOKE_OK");
 writeValidDockerfile();
 
 const { loadConfig } = await import("../src/config.js");
-const { DeploymentManager, deploymentSlugFromHost, isAllowedDeploymentDomain } = await import("../src/deployments.js");
+const { deploymentSlugFromHost, isAllowedDeploymentDomain } = await import("../src/deployment-routing.js");
+const { DeploymentManager } = await import("../src/deployments.js");
 
 const manager = new DeploymentManager(loadConfig());
 let deployedSlug: string | undefined;

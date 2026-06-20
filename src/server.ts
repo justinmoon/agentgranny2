@@ -1,6 +1,5 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { extname, isAbsolute, join, relative, resolve } from "node:path";
+import { isAbsolute, resolve } from "node:path";
 import { createServer as createViteServer, type ViteDevServer } from "vite";
 import {
   CatalogStore,
@@ -11,8 +10,23 @@ import {
   type CatalogWorkspace
 } from "./catalog.js";
 import { loadConfig } from "./config.js";
-import { DeploymentManager, deploymentPath, deploymentSlugFromHost, isAllowedDeploymentDomain } from "./deployments.js";
+import { seedDevAuthUsers } from "./dev-auth.js";
+import { deploymentPath, deploymentSlugFromHost, isAllowedDeploymentDomain } from "./deployment-routing.js";
+import { DeploymentManager } from "./deployments.js";
+import {
+  deploymentRequestHeaders,
+  errorStatus,
+  isAddressInUse,
+  isSecureRequest,
+  readBody,
+  readJson,
+  sendError,
+  sendJson,
+  sendProxyResponse,
+  serveStatic
+} from "./http-utils.js";
 import { requestHeaders } from "./proxy-utils.js";
+import { ensureWorkspaceProjectPath, workspaceApiPath, workspacePreviewPath } from "./server-paths.js";
 import { TelegramChannel } from "./telegram-channel.js";
 import type { AppState } from "./types.js";
 import { WorkspaceRuntimeManager } from "./workspace-runtime.js";
@@ -24,25 +38,7 @@ const runtimes = new WorkspaceRuntimeManager(config, deployments);
 const isProduction = process.env.NODE_ENV === "production";
 let telegram: TelegramChannel | undefined;
 
-if (config.authEnabled && !isProduction && process.env.AGENTMOM_DEV_AUTH_PASSWORD) {
-  const seedUsers =
-    process.env.AGENTMOM_DEV_AUTH_USERS ??
-    (process.env.AGENTMOM_DEV_AUTH_EMAIL
-      ? `${process.env.AGENTMOM_DEV_AUTH_EMAIL}|${process.env.AGENTMOM_DEV_AUTH_NAME ?? "Local Admin"}|admin`
-      : "");
-
-  for (const rawUser of seedUsers.split(",")) {
-    const [email, fullName, rawRole] = rawUser.split("|").map((part) => part.trim());
-    if (!email) continue;
-    const role: "admin" | "user" = rawRole === "user" ? "user" : "admin";
-    catalog.ensureSeedUser({
-      email,
-      fullName: fullName || email,
-      password: process.env.AGENTMOM_DEV_AUTH_PASSWORD,
-      role
-    });
-  }
-}
+seedDevAuthUsers(catalog, config.authEnabled, isProduction);
 
 let vite: ViteDevServer | undefined;
 
@@ -262,7 +258,7 @@ const server = createServer(async (req, res) => {
       });
     }
 
-    return serveStatic(url.pathname, res);
+    return serveStatic(config.rootDir, url.pathname, res);
   } catch (error) {
     sendError(res, error, errorStatus(error));
   }
@@ -441,156 +437,6 @@ function authorizeWorkspace(req: IncomingMessage, workspaceId: string): CatalogW
   return catalog.authorizeWorkspace(requireUser(req), workspaceId);
 }
 
-function ensureWorkspaceProjectPath(projectPath: string, projectsDir: string): string {
-  const resolvedPath = resolve(projectPath);
-  const projectRelative = relative(resolve(projectsDir), resolvedPath);
-  if (projectRelative === "" || (!projectRelative.startsWith("..") && !isAbsolute(projectRelative))) {
-    return resolvedPath;
-  }
-  throw new Error(`Deployment path must be inside ${projectsDir}`);
-}
-
-function workspaceApiPath(pathname: string): { workspaceId: string; rest: string } | undefined {
-  const match = /^\/api\/workspaces\/([^/]+)(\/.*)?$/.exec(pathname);
-  if (!match) return undefined;
-  return { workspaceId: decodeURIComponent(match[1]), rest: match[2] || "" };
-}
-
-function workspacePreviewPath(
-  pathname: string
-): { workspaceId: string; previewId: string; upstreamPath: string; needsSlash?: boolean } | undefined {
-  const match = /^\/w\/([^/]+)\/preview\/([^/]+)(\/.*)?$/.exec(pathname);
-  if (!match) return undefined;
-  if (!match[3]) {
-    return {
-      workspaceId: decodeURIComponent(match[1]),
-      previewId: decodeURIComponent(match[2]),
-      upstreamPath: "/",
-      needsSlash: true
-    };
-  }
-  return {
-    workspaceId: decodeURIComponent(match[1]),
-    previewId: decodeURIComponent(match[2]),
-    upstreamPath: match[3]
-  };
-}
-
-function isSecureRequest(req: IncomingMessage): boolean {
-  return req.headers["x-forwarded-proto"] === "https";
-}
-
-function deploymentRequestHeaders(req: IncomingMessage): Record<string, string> {
-  const headers = requestHeaders(req.headers);
-  delete headers.cookie;
-  delete headers.authorization;
-  delete headers["proxy-authorization"];
-
-  const host = firstHeader(req.headers.host);
-  if (host) {
-    headers.host = host;
-    headers["x-forwarded-host"] = host;
-  }
-
-  headers["x-forwarded-proto"] = firstHeader(req.headers["x-forwarded-proto"]) || (isSecureRequest(req) ? "https" : "http");
-  return headers;
-}
-
-function firstHeader(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
-
-async function readJson(req: IncomingMessage): Promise<any> {
-  const body = await readBody(req);
-  if (body.length === 0) return undefined;
-  return JSON.parse(body.toString("utf8"));
-}
-
-async function readBody(req: IncomingMessage): Promise<Buffer> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-  return Buffer.concat(chunks);
-}
-
-function sendJson(
-  res: ServerResponse,
-  payload: unknown,
-  status = 200,
-  headers: Record<string, string> = {}
-): void {
-  res.writeHead(status, { "Content-Type": "application/json", ...headers });
-  res.end(JSON.stringify(payload));
-}
-
-function sendProxyResponse(
-  res: ServerResponse,
-  status: number,
-  headers: Record<string, string>,
-  body: Buffer | undefined
-): void {
-  res.writeHead(status, headers);
-  res.end(body);
-}
-
-function sendError(res: ServerResponse, error: unknown, status = 500): void {
-  if (res.headersSent) {
-    res.end();
-    return;
-  }
-  const message = error instanceof Error ? error.message : String(error);
-  sendJson(res, { error: message }, status);
-}
-
-function errorStatus(error: unknown): number {
-  const explicit = typeof error === "object" && error && "status" in error ? Number((error as { status?: unknown }).status) : 0;
-  if (explicit) return explicit;
-  const message = error instanceof Error ? error.message : String(error);
-  if (message === "forbidden" || message === "admin required") return 403;
-  if (message.includes("not found")) return 404;
-  if (message === "unauthorized") return 401;
-  if (
-    message.includes("required") ||
-    message.includes("invalid") ||
-    message.includes("registered")
-  ) {
-    return 400;
-  }
-  return 500;
-}
-
-function serveStatic(pathname: string, res: ServerResponse): void {
-  const clientDir = join(config.rootDir, "dist/client");
-  const relative = pathname === "/" ? "/index.html" : pathname;
-  const requestedFile = join(clientDir, relative);
-  const filePath = isFile(requestedFile)
-    ? requestedFile
-    : extname(pathname) === ""
-      ? join(clientDir, "index.html")
-      : undefined;
-  if (!filePath || !isFile(filePath)) return sendError(res, new Error("Not found"), 404);
-
-  const mime =
-    extname(filePath) === ".html"
-      ? "text/html"
-      : extname(filePath) === ".js"
-        ? "text/javascript"
-        : extname(filePath) === ".css"
-          ? "text/css"
-          : "application/octet-stream";
-  res.writeHead(200, { "Content-Type": mime });
-  res.end(readFileSync(filePath));
-}
-
-function isFile(path: string): boolean {
-  try {
-    return existsSync(path) && statSync(path).isFile();
-  } catch {
-    return false;
-  }
-}
-
 async function shutdown(): Promise<void> {
   await telegram?.stop();
   runtimes.dispose();
@@ -648,8 +494,4 @@ function listenOn(port: number): Promise<number> {
     server.once("listening", onListening);
     server.listen(port, config.host);
   });
-}
-
-function isAddressInUse(error: unknown): boolean {
-  return error instanceof Error && "code" in error && error.code === "EADDRINUSE";
 }

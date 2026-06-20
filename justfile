@@ -18,6 +18,9 @@ typecheck:
 smoke-auth:
     nix develop -c npm run smoke:auth
 
+smoke-cli:
+    nix develop -c npm run smoke:cli
+
 smoke-local:
     nix develop -c npm run smoke:local
 

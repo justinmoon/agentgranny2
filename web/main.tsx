@@ -9,24 +9,18 @@ import {
 } from "@assistant-ui/react";
 import {
   CircleStop,
-  ExternalLink,
-  FileJson,
   GitBranch,
   LogOut,
   MessageCircle,
-  Monitor,
   PanelRightClose,
   PanelRightOpen,
   Play,
-  Plus,
   RefreshCw,
   RotateCcw,
   Send,
   SquarePen,
   Terminal,
-  Trash2,
-  UserPlus,
-  X
+  UserPlus
 } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -39,10 +33,12 @@ import type {
 } from "../src/types.js";
 import { AdminPage } from "./admin.js";
 import { AuthScreen, LoadingScreen } from "./auth.js";
-import { readError, readJsonResponse } from "./http.js";
+import { readError, readJsonResponse, readResponseError } from "./http.js";
+import { RightPanel } from "./right-panel.js";
 import { TelegramSettingsPage } from "./telegram-settings.js";
 import "./pages.css";
 import "./styles.css";
+import "./thread.css";
 
 const emptyState: AppState = {
   app: {
@@ -64,17 +60,6 @@ const emptyState: AppState = {
   }
 };
 
-type RightPanelTab = {
-  id: string;
-  type: "preview" | "events";
-  title: string;
-};
-
-const initialRightTabs: RightPanelTab[] = [
-  { id: "preview-1", type: "preview", title: "Preview" },
-  { id: "events-1", type: "events", title: "Events" }
-];
-
 function App() {
   const [me, setMe] = useState<MeState | undefined>();
   const [authChecked, setAuthChecked] = useState(false);
@@ -82,12 +67,7 @@ function App() {
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | undefined>();
   const [state, setState] = useState<AppState>(emptyState);
   const [error, setError] = useState<string | undefined>();
-  const [selectedPreviewId, setSelectedPreviewId] = useState<string | undefined>();
-  const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
-  const [rightTabs, setRightTabs] = useState<RightPanelTab[]>(initialRightTabs);
-  const [activeRightTabId, setActiveRightTabId] = useState(initialRightTabs[0].id);
-  const [newTabMenuOpen, setNewTabMenuOpen] = useState(false);
   const [resumeTestRunning, setResumeTestRunning] = useState(false);
   const isAdminPage = window.location.pathname === "/admin";
   const isTelegramSettingsPage = window.location.pathname === "/settings/telegram";
@@ -122,7 +102,7 @@ function App() {
   const refresh = useCallback(async () => {
     if (!selectedWorkspace?.id) return;
     const response = await fetch(workspaceUrl("/state"));
-    if (!response.ok) throw new Error(await response.text());
+    if (!response.ok) throw new Error(await readResponseError(response));
     setState((await response.json()) as AppState);
     setError(undefined);
   }, [selectedWorkspace?.id, workspaceUrl]);
@@ -136,34 +116,30 @@ function App() {
 
   useEffect(() => {
     if (isAdminPage || isTelegramSettingsPage || !selectedWorkspace?.id) return;
-    void refresh().catch((err) => setError(readError(err)));
+    let cancelled = false;
+    let events: EventSource | undefined;
 
-    const events = new EventSource(workspaceUrl("/events"));
-    events.addEventListener("state", (event) => {
-      setState(JSON.parse((event as MessageEvent).data) as AppState);
-      setError(undefined);
-    });
-    events.onerror = () => setError("Event stream disconnected. Refresh or restart the dev server.");
-    return () => events.close();
+    void refresh()
+      .then(() => {
+        if (cancelled) return;
+        events = new EventSource(workspaceUrl("/events"));
+        events.addEventListener("state", (event) => {
+          setState(JSON.parse((event as MessageEvent).data) as AppState);
+          setError(undefined);
+        });
+        events.onerror = () => setError("Event stream disconnected. Refresh or restart the dev server.");
+      })
+      .catch((err) => {
+        if (!cancelled) setError(readError(err));
+      });
+
+    return () => {
+      cancelled = true;
+      events?.close();
+    };
   }, [isAdminPage, isTelegramSettingsPage, refresh, selectedWorkspace?.id, workspaceUrl]);
 
   const messages = useMemo(() => state.messages.map(toThreadMessage), [state.messages]);
-  const selectedPreview = useMemo(
-    () => state.previews.find((preview) => preview.id === selectedPreviewId) ?? state.previews[0],
-    [selectedPreviewId, state.previews]
-  );
-  const activeRightTab = rightTabs.find((tab) => tab.id === activeRightTabId) ?? rightTabs[0];
-
-  useEffect(() => {
-    if (state.previews.length === 0) {
-      setSelectedPreviewId(undefined);
-      return;
-    }
-    if (!selectedPreviewId || !state.previews.some((preview) => preview.id === selectedPreviewId)) {
-      setSelectedPreviewId(state.previews[0].id);
-    }
-  }, [selectedPreviewId, state.previews]);
-
   const runtime = useExternalStoreRuntime<ThreadMessageLike>({
     messages,
     isRunning: state.isRunning,
@@ -177,7 +153,7 @@ function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content })
       });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readResponseError(response));
       setState((await response.json()) as AppState);
     },
     onCancel: async () => {
@@ -214,7 +190,7 @@ function App() {
     setError(undefined);
     try {
       const response = await fetch(workspaceUrl("/runtime/resume-test"), { method: "POST" });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readResponseError(response));
       setState((await response.json()) as AppState);
     } catch (err) {
       setError(readError(err));
@@ -228,30 +204,6 @@ function App() {
     setMe(undefined);
     setState(emptyState);
     setSelectedWorkspaceId(undefined);
-  }
-
-  function addRightTab(type: RightPanelTab["type"]) {
-    const title = type === "preview" ? "Preview" : "Events";
-    const id = `${type}-${Date.now().toString(36)}`;
-    const tab = { id, type, title };
-    setRightTabs((tabs) => [...tabs, tab]);
-    setActiveRightTabId(id);
-    setRightPanelOpen(true);
-    setNewTabMenuOpen(false);
-  }
-
-  function closeRightTab(tabId: string) {
-    if (rightTabs.length <= 1) {
-      setRightPanelOpen(false);
-      return;
-    }
-
-    const index = rightTabs.findIndex((tab) => tab.id === tabId);
-    const nextTabs = rightTabs.filter((tab) => tab.id !== tabId);
-    setRightTabs(nextTabs);
-    if (activeRightTabId === tabId) {
-      setActiveRightTabId(nextTabs[Math.max(0, index - 1)]?.id ?? nextTabs[0].id);
-    }
   }
 
   if (!authChecked) {
@@ -456,187 +408,18 @@ function App() {
               </ThreadPrimitive.Root>
             </section>
 
-            {rightPanelOpen && (
-              <aside className="right-panel">
-                <div className="right-tabbar">
-                  <div className="right-tabs" role="tablist" aria-label="Right panel tabs">
-                    {rightTabs.map((tab) => (
-                      <div
-                        className={tab.id === activeRightTab?.id ? "right-tab active" : "right-tab"}
-                        key={tab.id}
-                      >
-                        <button
-                          type="button"
-                          className="right-tab-select"
-                          onClick={() => setActiveRightTabId(tab.id)}
-                          role="tab"
-                          aria-selected={tab.id === activeRightTab?.id}
-                        >
-                          {tab.type === "events" ? (
-                            <FileJson size={14} />
-                          ) : (
-                            <Monitor size={14} />
-                          )}
-                          <span>{tab.title}</span>
-                          <span className="right-tab-count">
-                            {tab.type === "events" ? state.events.length : state.previews.length}
-                          </span>
-                        </button>
-                        <button
-                          type="button"
-                          className="right-tab-close"
-                          title="Close tab"
-                          onClick={() => closeRightTab(tab.id)}
-                        >
-                          <X size={12} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="right-tab-actions">
-                    <button
-                      type="button"
-                      className="panel-icon-button"
-                      onClick={() => setNewTabMenuOpen((open) => !open)}
-                      title="New tab"
-                    >
-                      <Plus size={16} />
-                    </button>
-                    {newTabMenuOpen && (
-                      <div className="new-tab-menu">
-                        <button type="button" onClick={() => addRightTab("preview")}>
-                          <Monitor size={14} />
-                          <span>Preview</span>
-                        </button>
-                        <button type="button" onClick={() => addRightTab("events")}>
-                          <FileJson size={14} />
-                          <span>Events</span>
-                        </button>
-                      </div>
-                    )}
-                    <button
-                      type="button"
-                      className="panel-icon-button"
-                      onClick={() => setRightPanelOpen(false)}
-                      title="Collapse panel"
-                    >
-                      <PanelRightClose size={16} />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="right-panel-body">
-                  {activeRightTab?.type === "events" ? (
-                    <EventLog events={state.events} />
-                  ) : (
-                    <PreviewPane
-                      previews={state.previews}
-                      selectedPreview={selectedPreview}
-                      previewRefreshKey={previewRefreshKey}
-                      onSelectPreview={setSelectedPreviewId}
-                      onRefreshPreview={() => setPreviewRefreshKey((key) => key + 1)}
-                      onRemovePreview={removePreview}
-                    />
-                  )}
-                </div>
-              </aside>
-            )}
+            <div className="right-panel-slot" hidden={!rightPanelOpen}>
+              <RightPanel
+                events={state.events}
+                previews={state.previews}
+                onCollapse={() => setRightPanelOpen(false)}
+                onRemovePreview={removePreview}
+              />
+            </div>
           </div>
         </main>
       </div>
     </AssistantRuntimeProvider>
-  );
-}
-
-function PreviewPane({
-  previews,
-  selectedPreview,
-  previewRefreshKey,
-  onSelectPreview,
-  onRefreshPreview,
-  onRemovePreview
-}: {
-  previews: PreviewService[];
-  selectedPreview: PreviewService | undefined;
-  previewRefreshKey: number;
-  onSelectPreview: (id: string) => void;
-  onRefreshPreview: () => void;
-  onRemovePreview: (preview: PreviewService) => Promise<void>;
-}) {
-  return (
-    <section className="preview-pane">
-      <div className="pane-toolbar">
-        <div className="preview-tabs">
-          {previews.length === 0 ? (
-            <span className="preview-placeholder">No exposed services.</span>
-          ) : (
-            previews.map((preview) => (
-              <button
-                type="button"
-                className={preview.id === selectedPreview?.id ? "preview-tab active" : "preview-tab"}
-                key={preview.id}
-                onClick={() => onSelectPreview(preview.id)}
-                title={`${preview.name} :${preview.port}`}
-              >
-                <span>{preview.name}</span>
-                <small>:{preview.port}</small>
-              </button>
-            ))
-          )}
-        </div>
-        <div className="pane-actions">
-          <button type="button" className="panel-icon-button" onClick={onRefreshPreview} disabled={!selectedPreview} title="Refresh preview">
-            <RefreshCw size={15} />
-          </button>
-          {selectedPreview && (
-            <a className="panel-icon-button" href={selectedPreview.path} target="_blank" rel="noreferrer" title="Open preview">
-              <ExternalLink size={15} />
-            </a>
-          )}
-          {selectedPreview && (
-            <button type="button" className="panel-icon-button" onClick={() => void onRemovePreview(selectedPreview)} title="Remove preview">
-              <Trash2 size={14} />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {previews.length === 0 ? (
-        <div className="preview-empty">
-          <Monitor size={22} />
-          <span>No exposed services.</span>
-        </div>
-      ) : (
-        selectedPreview && (
-          <iframe
-            className="preview-frame"
-            key={`${selectedPreview.id}-${previewRefreshKey}`}
-            src={selectedPreview.path}
-            title={`Preview ${selectedPreview.name}`}
-          />
-        )
-      )}
-    </section>
-  );
-}
-
-function EventLog({ events }: { events: AppState["events"] }) {
-  return (
-    <section className="event-log-pane">
-      {events.length === 0 ? (
-        <p className="muted">No events.</p>
-      ) : (
-        events.map((event) => (
-          <article className={event.isError ? "json-event error" : "json-event"} key={event.id}>
-            <div>
-              <strong>{event.title}</strong>
-              <span>{new Date(event.createdAt).toLocaleTimeString()}</span>
-            </div>
-            <pre>{JSON.stringify(event, null, 2)}</pre>
-          </article>
-        ))
-      )}
-    </section>
   );
 }
 
