@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { extname, isAbsolute, join, relative, resolve } from "node:path";
 import { createServer as createViteServer, type ViteDevServer } from "vite";
@@ -561,9 +561,15 @@ function errorStatus(error: unknown): number {
 }
 
 function serveStatic(pathname: string, res: ServerResponse): void {
+  const clientDir = join(config.rootDir, "dist/client");
   const relative = pathname === "/" ? "/index.html" : pathname;
-  const filePath = join(config.rootDir, "dist/client", relative);
-  if (!existsSync(filePath)) return sendError(res, new Error("Not found"), 404);
+  const requestedFile = join(clientDir, relative);
+  const filePath = isFile(requestedFile)
+    ? requestedFile
+    : extname(pathname) === ""
+      ? join(clientDir, "index.html")
+      : undefined;
+  if (!filePath || !isFile(filePath)) return sendError(res, new Error("Not found"), 404);
 
   const mime =
     extname(filePath) === ".html"
@@ -575,6 +581,14 @@ function serveStatic(pathname: string, res: ServerResponse): void {
           : "application/octet-stream";
   res.writeHead(200, { "Content-Type": mime });
   res.end(readFileSync(filePath));
+}
+
+function isFile(path: string): boolean {
+  try {
+    return existsSync(path) && statSync(path).isFile();
+  } catch {
+    return false;
+  }
 }
 
 async function shutdown(): Promise<void> {
