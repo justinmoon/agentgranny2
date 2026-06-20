@@ -1,5 +1,5 @@
 {
-  "name": "agentgranny2",
+  "name": "agentmom",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,9 +9,9 @@
     "typecheck": "tsc --noEmit",
     "start": "NODE_ENV=production tsx src/server.ts",
     "smoke:auth": "tsx scripts/smoke-auth.ts",
-    "smoke:local": "AGENTGRANNY_EXECUTOR=local tsx scripts/smoke-local.ts",
-    "smoke:smolvm": "AGENTGRANNY_EXECUTOR=smolvm tsx scripts/smoke-smolvm.ts",
-    "smoke:deploy": "AGENTGRANNY_EXECUTOR=local tsx scripts/smoke-deploy.ts"
+    "smoke:local": "AGENTMOM_EXECUTOR=local tsx scripts/smoke-local.ts",
+    "smoke:smolvm": "AGENTMOM_EXECUTOR=smolvm tsx scripts/smoke-smolvm.ts",
+    "smoke:deploy": "AGENTMOM_EXECUTOR=local tsx scripts/smoke-deploy.ts"
   },
   "dependencies": {
     "@assistant-ui/react": "0.12.19",

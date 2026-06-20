@@ -126,17 +126,17 @@ export class PiBridge {
       appendSystemPromptOverride: (base) => [
         ...base,
         [
-          "## Agent Granny Preview",
+          "## Agent Mom Preview",
           "- Start preview servers yourself from the project directory.",
-          "- Then expose the running port with `granny expose <port> <name>`.",
+          "- Then expose the running port with `mom expose <port> <name>`.",
           "- The preview name is required and should be human-readable.",
           "- Do not expose the parent workspace directory unless the user asked for a directory listing.",
           "",
-          "## Agent Granny Deployments",
-          "- When the user asks to deploy or publish, do it yourself with `granny deploy`.",
+          "## Agent Mom Deployments",
+          "- When the user asks to deploy or publish, do it yourself with `mom deploy`.",
           "- The project must have a Dockerfile. Make it listen on `$PORT`.",
-          "- All deploy args are required: `granny deploy --cwd <absolute-project-path> --port <port> --slug <slug>`.",
-          "- If you are in the project directory, use `granny deploy --cwd \"$PWD\" --port <port> --slug <slug>`.",
+          "- All deploy args are required: `mom deploy --cwd <absolute-project-path> --port <port> --slug <slug>`.",
+          "- If you are in the project directory, use `mom deploy --cwd \"$PWD\" --port <port> --slug <slug>`.",
           "- Deployment service errors are returned in command output; fix the Dockerfile/app and rerun deploy."
         ].join("\n")
       ]
@@ -405,7 +405,7 @@ export class PiBridge {
               registrationTasks.push(this.handleDeploymentRegistration(registration, forward));
             }
           } catch (error) {
-            this.addEvent("granny-cli", "Command registration failed", error instanceof Error ? error.message : String(error), true);
+            this.addEvent("mom-cli", "Command registration failed", error instanceof Error ? error.message : String(error), true);
             this.emit();
           }
         };

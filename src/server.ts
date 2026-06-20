@@ -25,11 +25,11 @@ const runtimes = new WorkspaceRuntimeManager(config, deployments);
 const isProduction = process.env.NODE_ENV === "production";
 let telegram: TelegramChannel | undefined;
 
-if (config.authEnabled && !isProduction && process.env.AGENTGRANNY_DEV_AUTH_PASSWORD) {
+if (config.authEnabled && !isProduction && process.env.AGENTMOM_DEV_AUTH_PASSWORD) {
   const seedUsers =
-    process.env.AGENTGRANNY_DEV_AUTH_USERS ??
-    (process.env.AGENTGRANNY_DEV_AUTH_EMAIL
-      ? `${process.env.AGENTGRANNY_DEV_AUTH_EMAIL}|${process.env.AGENTGRANNY_DEV_AUTH_NAME ?? "Local Admin"}|admin`
+    process.env.AGENTMOM_DEV_AUTH_USERS ??
+    (process.env.AGENTMOM_DEV_AUTH_EMAIL
+      ? `${process.env.AGENTMOM_DEV_AUTH_EMAIL}|${process.env.AGENTMOM_DEV_AUTH_NAME ?? "Local Admin"}|admin`
       : "");
 
   for (const rawUser of seedUsers.split(",")) {
@@ -39,7 +39,7 @@ if (config.authEnabled && !isProduction && process.env.AGENTGRANNY_DEV_AUTH_PASS
     catalog.ensureSeedUser({
       email,
       fullName: fullName || email,
-      password: process.env.AGENTGRANNY_DEV_AUTH_PASSWORD,
+      password: process.env.AGENTMOM_DEV_AUTH_PASSWORD,
       role
     });
   }
@@ -595,7 +595,7 @@ function startTelegramChannel(): void {
 }
 
 async function startServer(): Promise<void> {
-  const rawPort = process.env.AGENTGRANNY_PORT?.trim();
+  const rawPort = process.env.AGENTMOM_PORT?.trim();
   const explicitPort = rawPort !== undefined && rawPort !== "";
   try {
     config.port = await listenOn(config.port);
@@ -606,7 +606,7 @@ async function startServer(): Promise<void> {
     config.port = await listenOn(0);
   }
 
-  console.log(`agentgranny2 listening on http://${config.host}:${config.port}`);
+  console.log(`agentmom listening on http://${config.host}:${config.port}`);
   console.log(`authEnabled=${config.authEnabled}`);
   console.log(`workspaceRoot=${config.workspaceRoot}`);
   console.log(`workspace=${config.workspace}`);

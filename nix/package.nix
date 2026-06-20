@@ -6,7 +6,7 @@
 }:
 
 buildNpmPackage {
-  pname = "agentgranny2";
+  pname = "agentmom";
   version = "0.1.0";
 
   src = lib.cleanSourceWith {
@@ -18,7 +18,7 @@ buildNpmPackage {
       !(base == ".git"
         || base == ".direnv"
         || base == ".env"
-        || base == ".agentgranny2"
+        || base == ".agentmom"
         || base == ".smoke-workspace"
         || base == ".smoke-smolvm-workspace"
         || base == "dist"
@@ -32,7 +32,7 @@ buildNpmPackage {
 
   nodejs = nodejs_24;
   npmDepsFetcherVersion = 2;
-  npmDepsHash = "sha256-tcC9+1wCJz5k1nr55hAy3OUS7W3c3wBmJhdS17JwrfE=";
+  npmDepsHash = "sha256-TlnaxvQpQoxEFM5SU6ZiCqmNTa1pOwicCbEkxdsTjes=";
   makeCacheWritable = true;
 
   nativeBuildInputs = [ makeWrapper ];
@@ -42,20 +42,20 @@ buildNpmPackage {
   installPhase = ''
     runHook preInstall
 
-    mkdir -p "$out/share/agentgranny2" "$out/bin"
-    cp -R dist src package.json package-lock.json node_modules "$out/share/agentgranny2/"
+    mkdir -p "$out/share/agentmom" "$out/bin"
+    cp -R dist src package.json package-lock.json node_modules "$out/share/agentmom/"
 
-    makeWrapper ${nodejs_24}/bin/node "$out/bin/agentgranny2" \
+    makeWrapper ${nodejs_24}/bin/node "$out/bin/agentmom" \
       --set NODE_ENV production \
-      --chdir "$out/share/agentgranny2" \
-      --add-flags "$out/share/agentgranny2/node_modules/tsx/dist/cli.mjs" \
-      --add-flags "$out/share/agentgranny2/src/server.ts"
+      --chdir "$out/share/agentmom" \
+      --add-flags "$out/share/agentmom/node_modules/tsx/dist/cli.mjs" \
+      --add-flags "$out/share/agentmom/src/server.ts"
 
     runHook postInstall
   '';
 
   meta = {
-    description = "Lean Pi-backed Agent Granny web shell";
-    mainProgram = "agentgranny2";
+    description = "Lean Pi-backed Agent Mom web shell";
+    mainProgram = "agentmom";
   };
 }

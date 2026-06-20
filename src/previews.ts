@@ -4,8 +4,8 @@ import { posix as pathPosix } from "node:path";
 import type { AppConfig } from "./config.js";
 import type { PreviewService } from "./types.js";
 
-export const PREVIEW_SENTINEL = "__AGENTGRANNY_EXPOSE__";
-export const DEPLOY_SENTINEL = "__AGENTGRANNY_DEPLOY__";
+export const PREVIEW_SENTINEL = "__AGENTMOM_EXPOSE__";
+export const DEPLOY_SENTINEL = "__AGENTMOM_DEPLOY__";
 
 export type PreviewFetchRequest = {
   method: string;
@@ -113,15 +113,15 @@ export class PreviewManager {
   }
 
   cliInstall(): { hostBinDir: string; guestBinDir: string } {
-    const hostBinDir = join(this.config.projectsDir, ".agentgranny2", "bin");
-    const hostCliPath = join(hostBinDir, "granny");
+    const hostBinDir = join(this.config.projectsDir, ".agentmom", "bin");
+    const hostCliPath = join(hostBinDir, "mom");
     mkdirSync(hostBinDir, { recursive: true });
     writeFileSync(hostCliPath, previewCliSource(), "utf8");
     chmodSync(hostCliPath, 0o755);
 
     const guestBinDir =
       this.config.executor === "smolvm"
-        ? pathPosix.join(this.config.smolvm.guestWorkspace, ".agentgranny2", "bin")
+        ? pathPosix.join(this.config.smolvm.guestWorkspace, ".agentmom", "bin")
         : hostBinDir;
 
     return { hostBinDir, guestBinDir };
@@ -258,7 +258,7 @@ function fail(message) {
 }
 
 function usage() {
-  fail("Usage:\\n  granny expose <port> <name>\\n  granny deploy --cwd <absolute-path> --port <port> --slug <slug>");
+  fail("Usage:\\n  mom expose <port> <name>\\n  mom deploy --cwd <absolute-path> --port <port> --slug <slug>");
 }
 
 function parsePort(value) {
@@ -304,7 +304,7 @@ if (command === "deploy") {
   const cwd = readRequiredOption("cwd");
   const slug = readRequiredOption("slug");
   const port = parsePort(readRequiredOption("port"));
-  if (!cwd.startsWith("/")) fail("granny deploy requires --cwd to be an absolute path");
+  if (!cwd.startsWith("/")) fail("mom deploy requires --cwd to be an absolute path");
   if (!slug) usage();
 
   console.log(deploySentinel + JSON.stringify({ cwd, slug, port }));

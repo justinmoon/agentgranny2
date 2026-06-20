@@ -8,20 +8,20 @@ import { DeploymentManager } from "../src/deployments.js";
 import type { DeploymentRecord } from "../src/types.js";
 import { workspaceConfig } from "../src/workspace-runtime.js";
 
-const root = mkdtempSync(join(tmpdir(), "agentgranny2-auth-"));
+const root = mkdtempSync(join(tmpdir(), "agentmom-auth-"));
 
-process.env.AGENTGRANNY_AUTH_ENABLED = "1";
-process.env.AGENTGRANNY_WORKSPACE = join(root, "workspace");
-process.env.AGENTGRANNY_WORKSPACE_ROOT = join(root, "workspace-root");
-process.env.AGENTGRANNY_STATE_DIR = join(root, "state");
-process.env.AGENTGRANNY_EXECUTOR = "local";
+process.env.AGENTMOM_AUTH_ENABLED = "1";
+process.env.AGENTMOM_WORKSPACE = join(root, "workspace");
+process.env.AGENTMOM_WORKSPACE_ROOT = join(root, "workspace-root");
+process.env.AGENTMOM_STATE_DIR = join(root, "state");
+process.env.AGENTMOM_EXECUTOR = "local";
 
 try {
   const config = loadConfig();
   const catalog = new CatalogStore(config);
 
   const dev = catalog.ensureDevUser();
-  assert.equal(dev.user.email, "dev@agentgranny.local");
+  assert.equal(dev.user.email, "dev@agentmom.local");
   assert.equal(dev.workspace.id, "dev-workspace");
 
   const admin = catalog.signup({
@@ -42,7 +42,7 @@ try {
     /invite code is required/
   );
 
-  const adminUser = catalog.currentUser(`granny_session=${admin.token}`)!;
+  const adminUser = catalog.currentUser(`agentmom_session=${admin.token}`)!;
   const invite = catalog.createInvite(adminUser, { label: "team", role: "user" });
   assert.equal(catalog.read().invites[0].code, invite.code);
   assert.equal(catalog.invites(adminUser)[0].code, invite.code);
@@ -76,7 +76,7 @@ try {
     /invite code is invalid/
   );
 
-  const normalUser = catalog.currentUser(`granny_session=${userOne.token}`)!;
+  const normalUser = catalog.currentUser(`agentmom_session=${userOne.token}`)!;
   assert.throws(() => catalog.createInvite(normalUser, { role: "user" }), /admin required/);
 
   const adminWorkspace = catalog.workspaceForUser(adminUser);
@@ -199,7 +199,7 @@ try {
 
   console.log("auth smoke ok");
 } finally {
-  if (process.env.AGENTGRANNY_KEEP_SMOKE !== "1") {
+  if (process.env.AGENTMOM_KEEP_SMOKE !== "1") {
     rmSync(root, { recursive: true, force: true });
   }
 }

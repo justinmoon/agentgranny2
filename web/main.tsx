@@ -256,7 +256,7 @@ function App() {
   }
 
   if (!authChecked) {
-    return <LoadingScreen text="Loading Agent Granny 2" />;
+    return <LoadingScreen text="Loading Agent Mom" />;
   }
 
   if (authEnabled && !me) {
@@ -280,9 +280,9 @@ function App() {
       <div className="app-shell">
         <aside className="sidebar">
           <div className="brand">
-            <div className="brand-mark">G2</div>
+            <div className="brand-mark">AM</div>
             <div>
-              <h1>Agent Granny 2</h1>
+              <h1>Agent Mom</h1>
               <p>{me.user.fullName}</p>
             </div>
           </div>
@@ -589,9 +589,9 @@ function AuthScreen({
     <main className="auth-shell">
       <form className="auth-form" onSubmit={(event) => void submit(event)}>
         <div className="brand auth-brand">
-          <div className="brand-mark">G2</div>
+          <div className="brand-mark">AM</div>
           <div>
-            <h1>Agent Granny 2</h1>
+            <h1>Agent Mom</h1>
             <p>{mode === "login" ? "Sign in" : "Create account"}</p>
           </div>
         </div>
@@ -731,7 +731,7 @@ function TelegramSettingsPage({
     <main className="settings-shell">
       <header className="admin-header">
         <div className="brand">
-          <div className="brand-mark">G2</div>
+          <div className="brand-mark">AM</div>
           <div>
             <h1>Telegram</h1>
             <p>{me.user.email}</p>
@@ -898,7 +898,7 @@ function AdminPage({
       <main className="admin-shell">
         <header className="admin-header">
           <div className="brand">
-            <div className="brand-mark">G2</div>
+            <div className="brand-mark">AM</div>
             <div>
               <h1>Admin</h1>
               <p>Admin access required</p>
@@ -916,7 +916,7 @@ function AdminPage({
     <main className="admin-shell">
       <header className="admin-header">
         <div className="brand">
-          <div className="brand-mark">G2</div>
+          <div className="brand-mark">AM</div>
           <div>
             <h1>Admin</h1>
             <p>{me.user.email}</p>
@@ -1034,9 +1034,9 @@ function LoadingScreen({ text, error, onRetry }: { text: string; error?: string;
     <main className="auth-shell">
       <div className="auth-form">
         <div className="brand auth-brand">
-          <div className="brand-mark">G2</div>
+          <div className="brand-mark">AM</div>
           <div>
-            <h1>Agent Granny 2</h1>
+            <h1>Agent Mom</h1>
             <p>{text}</p>
           </div>
         </div>

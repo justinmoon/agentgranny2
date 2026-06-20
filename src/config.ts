@@ -109,39 +109,39 @@ function readGitCommit(): string | undefined {
 }
 
 export function loadConfig(): AppConfig {
-  const workspace = resolve(process.env.AGENTGRANNY_WORKSPACE ?? process.cwd());
-  const workspaceRoot = resolve(process.env.AGENTGRANNY_WORKSPACE_ROOT ?? `${workspace}/workspaces`);
-  const projectsDir = resolve(process.env.AGENTGRANNY_PROJECTS_DIR ?? `${workspace}/projects`);
-  const agentCwd = resolve(process.env.AGENTGRANNY_AGENT_CWD ?? projectsDir);
-  const openRouterEnvFile = resolve(process.env.AGENTGRANNY_OPENROUTER_ENV_FILE ?? `${rootDir}/.env`);
+  const workspace = resolve(process.env.AGENTMOM_WORKSPACE ?? process.cwd());
+  const workspaceRoot = resolve(process.env.AGENTMOM_WORKSPACE_ROOT ?? `${workspace}/workspaces`);
+  const projectsDir = resolve(process.env.AGENTMOM_PROJECTS_DIR ?? `${workspace}/projects`);
+  const agentCwd = resolve(process.env.AGENTMOM_AGENT_CWD ?? projectsDir);
+  const openRouterEnvFile = resolve(process.env.AGENTMOM_OPENROUTER_ENV_FILE ?? `${rootDir}/.env`);
   const openRouterApiKey = process.env.OPENROUTER_API_KEY ?? readOpenRouterKeyFile(openRouterEnvFile);
   const telegramBotToken =
-    process.env.AGENTGRANNY_TELEGRAM_BOT_TOKEN ??
-    readEnvFileValue(openRouterEnvFile, "AGENTGRANNY_TELEGRAM_BOT_TOKEN");
+    process.env.AGENTMOM_TELEGRAM_BOT_TOKEN ??
+    readEnvFileValue(openRouterEnvFile, "AGENTMOM_TELEGRAM_BOT_TOKEN");
 
   if (openRouterApiKey && !process.env.OPENROUTER_API_KEY) {
     process.env.OPENROUTER_API_KEY = openRouterApiKey;
   }
 
-  const stateDir = resolve(process.env.AGENTGRANNY_STATE_DIR ?? `${workspace}/.agentgranny2`);
+  const stateDir = resolve(process.env.AGENTMOM_STATE_DIR ?? `${workspace}/.agentmom`);
 
   return {
-    appCommit: process.env.AGENTGRANNY_COMMIT ?? readGitCommit(),
-    authEnabled: boolFromEnv("AGENTGRANNY_AUTH_ENABLED", process.env.NODE_ENV === "production"),
-    host: process.env.AGENTGRANNY_HOST ?? "127.0.0.1",
-    port: numberFromEnv("AGENTGRANNY_PORT", 7392),
-    executor: process.env.AGENTGRANNY_EXECUTOR === "local" ? "local" : "smolvm",
+    appCommit: process.env.AGENTMOM_COMMIT ?? readGitCommit(),
+    authEnabled: boolFromEnv("AGENTMOM_AUTH_ENABLED", process.env.NODE_ENV === "production"),
+    host: process.env.AGENTMOM_HOST ?? "127.0.0.1",
+    port: numberFromEnv("AGENTMOM_PORT", 7392),
+    executor: process.env.AGENTMOM_EXECUTOR === "local" ? "local" : "smolvm",
     stateDir,
     workspace,
     workspaceRoot,
     projectsDir,
     agentCwd,
-    agentDir: resolve(process.env.AGENTGRANNY_AGENT_DIR ?? `${stateDir}/pi`),
-    sessionDir: resolve(process.env.AGENTGRANNY_SESSION_DIR ?? `${stateDir}/sessions`),
-    deploymentDir: resolve(process.env.AGENTGRANNY_DEPLOYMENT_DIR ?? `${stateDir}/deployments`),
-    deploymentBaseDomain: domainFromEnv("AGENTGRANNY_DEPLOYMENT_BASE_DOMAIN"),
-    previewBasePath: process.env.AGENTGRANNY_PREVIEW_BASE_PATH ?? "/preview",
-    openRouterModel: process.env.AGENTGRANNY_OPENROUTER_MODEL ?? "anthropic/claude-sonnet-4.5",
+    agentDir: resolve(process.env.AGENTMOM_AGENT_DIR ?? `${stateDir}/pi`),
+    sessionDir: resolve(process.env.AGENTMOM_SESSION_DIR ?? `${stateDir}/sessions`),
+    deploymentDir: resolve(process.env.AGENTMOM_DEPLOYMENT_DIR ?? `${stateDir}/deployments`),
+    deploymentBaseDomain: domainFromEnv("AGENTMOM_DEPLOYMENT_BASE_DOMAIN"),
+    previewBasePath: process.env.AGENTMOM_PREVIEW_BASE_PATH ?? "/preview",
+    openRouterModel: process.env.AGENTMOM_OPENROUTER_MODEL ?? "anthropic/claude-sonnet-4.5",
     openRouterEnvFile,
     openRouterApiKey,
     telegram: {
@@ -149,18 +149,18 @@ export function loadConfig(): AppConfig {
     },
     rootDir,
     podman: {
-      command: process.env.AGENTGRANNY_PODMAN_COMMAND ?? "podman"
+      command: process.env.AGENTMOM_PODMAN_COMMAND ?? "podman"
     },
     smolvm: {
-      command: process.env.AGENTGRANNY_SMOLVM_COMMAND ?? "smolvm",
-      name: process.env.AGENTGRANNY_SMOLVM_NAME ?? "agentgranny2-default",
-      image: process.env.AGENTGRANNY_SMOLVM_IMAGE ?? "node:24-bookworm",
-      guestWorkspace: process.env.AGENTGRANNY_SMOLVM_GUEST_WORKSPACE ?? "/workspace",
-      cpus: numberFromEnv("AGENTGRANNY_SMOLVM_CPUS", 4),
-      memoryMb: numberFromEnv("AGENTGRANNY_SMOLVM_MEMORY_MB", 8192),
-      network: process.env.AGENTGRANNY_SMOLVM_NETWORK !== "0",
-      storageGib: numberFromEnv("AGENTGRANNY_SMOLVM_STORAGE_GIB", 20),
-      overlayGib: numberFromEnv("AGENTGRANNY_SMOLVM_OVERLAY_GIB", 10)
+      command: process.env.AGENTMOM_SMOLVM_COMMAND ?? "smolvm",
+      name: process.env.AGENTMOM_SMOLVM_NAME ?? "agentmom-default",
+      image: process.env.AGENTMOM_SMOLVM_IMAGE ?? "node:24-bookworm",
+      guestWorkspace: process.env.AGENTMOM_SMOLVM_GUEST_WORKSPACE ?? "/workspace",
+      cpus: numberFromEnv("AGENTMOM_SMOLVM_CPUS", 4),
+      memoryMb: numberFromEnv("AGENTMOM_SMOLVM_MEMORY_MB", 8192),
+      network: process.env.AGENTMOM_SMOLVM_NETWORK !== "0",
+      storageGib: numberFromEnv("AGENTMOM_SMOLVM_STORAGE_GIB", 20),
+      overlayGib: numberFromEnv("AGENTMOM_SMOLVM_OVERLAY_GIB", 10)
     }
   };
 }

@@ -110,7 +110,7 @@ export class TelegramChannel {
       if (!route) {
         await this.sendText(
           message.chat.id,
-          "This Telegram chat is not linked yet. Open Agent Granny settings, create a Telegram link code, then send /link <code> here.",
+          "This Telegram chat is not linked yet. Open Agent Mom settings, create a Telegram link code, then send /link <code> here.",
           source === "message" ? message.message_id : undefined
         );
         return;
@@ -130,7 +130,7 @@ export class TelegramChannel {
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       console.error(`telegram message failed: ${detail}`);
-      await this.sendText(message.chat.id, `Agent Granny error: ${detail}`, source === "message" ? message.message_id : undefined);
+      await this.sendText(message.chat.id, `Agent Mom error: ${detail}`, source === "message" ? message.message_id : undefined);
     }
   }
 

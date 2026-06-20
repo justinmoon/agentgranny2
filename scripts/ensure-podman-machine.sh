@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-machine="${AGENTGRANNY_PODMAN_MACHINE:-agentgranny2}"
-cpus="${AGENTGRANNY_PODMAN_MACHINE_CPUS:-4}"
-memory="${AGENTGRANNY_PODMAN_MACHINE_MEMORY:-4096}"
-disk="${AGENTGRANNY_PODMAN_MACHINE_DISK:-40}"
-podman_bin="${AGENTGRANNY_PODMAN_BIN:-podman}"
+machine="${AGENTMOM_PODMAN_MACHINE:-agentmom}"
+cpus="${AGENTMOM_PODMAN_MACHINE_CPUS:-4}"
+memory="${AGENTMOM_PODMAN_MACHINE_MEMORY:-4096}"
+disk="${AGENTMOM_PODMAN_MACHINE_DISK:-40}"
+podman_bin="${AGENTMOM_PODMAN_BIN:-podman}"
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
   if command -v getconf >/dev/null 2>&1; then

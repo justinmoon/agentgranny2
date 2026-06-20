@@ -96,8 +96,8 @@ export class DeploymentManager {
     }
     const hostPort = await allocatePort();
     const version = Date.now().toString(36);
-    const image = `localhost/agentgranny2/${input.slug}:${version}`;
-    const container = `agentgranny2-${input.slug}-${version}`;
+    const image = `localhost/agentmom/${input.slug}:${version}`;
+    const container = `agentmom-${input.slug}-${version}`;
 
     let deployment: DeploymentRecord = {
       id: existing?.id ?? input.slug,
@@ -138,9 +138,9 @@ export class DeploymentManager {
         "--log-driver",
         "k8s-file",
         "--label",
-        `agentgranny2.deployment=${input.slug}`,
+        `agentmom.deployment=${input.slug}`,
         "--label",
-        `agentgranny2.version=${version}`,
+        `agentmom.version=${version}`,
         "-e",
         `PORT=${input.containerPort}`,
         "-p",
@@ -314,7 +314,7 @@ export class DeploymentManager {
   }
 
   private async waitUntilReady(hostPort: number, container: string): Promise<void> {
-    const timeoutMs = Number.parseInt(process.env.AGENTGRANNY_DEPLOYMENT_READY_TIMEOUT_MS ?? "30000", 10);
+    const timeoutMs = Number.parseInt(process.env.AGENTMOM_DEPLOYMENT_READY_TIMEOUT_MS ?? "30000", 10);
     const deadline = Date.now() + (Number.isFinite(timeoutMs) ? timeoutMs : 30_000);
     let lastError = "no response yet";
 

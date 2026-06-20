@@ -12,7 +12,7 @@ import type {
   UserRole
 } from "./types.js";
 
-export const SESSION_COOKIE = "granny_session";
+export const SESSION_COOKIE = "agentmom_session";
 const TELEGRAM_LINK_CODE_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
 const TELEGRAM_LINK_CODE_LENGTH = 4;
 const TELEGRAM_LINK_CODE_SPACE = TELEGRAM_LINK_CODE_ALPHABET.length ** TELEGRAM_LINK_CODE_LENGTH;
@@ -217,7 +217,7 @@ function slugify(value: string): string {
 }
 
 function machineNameFor(id: string, slug: string): string {
-  return `agentgranny2-${slug}-${id.slice(0, 8)}`.slice(0, 63);
+  return `agentmom-${slug}-${id.slice(0, 8)}`.slice(0, 63);
 }
 
 function passwordHash(password: string): string {
@@ -362,12 +362,12 @@ export class CatalogStore {
 
   ensureDevUser(): { user: CatalogUser; workspace: CatalogWorkspace } {
     const data = this.read();
-    let user = data.users.find((candidate) => candidate.email === "dev@agentgranny.local");
+    let user = data.users.find((candidate) => candidate.email === "dev@agentmom.local");
     const timestamp = now();
     if (!user) {
       user = {
         id: "dev-user",
-        email: "dev@agentgranny.local",
+        email: "dev@agentmom.local",
         fullName: "Dev User",
         role: "admin",
         passwordHash: "auth-disabled",
@@ -510,7 +510,7 @@ export class CatalogStore {
   createInvite(user: CatalogUser, input: InviteInput): { invite: PublicInvite; code: string } {
     if (user.role !== "admin") throw new Error("admin required");
     const role: UserRole = input.role === "admin" ? "admin" : "user";
-    const code = `granny-${base64url(12)}`;
+    const code = `mom-${base64url(12)}`;
     const invite: CatalogInvite = {
       id: randomUUID(),
       code,

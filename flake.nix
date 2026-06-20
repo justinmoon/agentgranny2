@@ -1,5 +1,5 @@
 {
-  description = "Agent Granny 2: a lean Pi-backed local web shell";
+  description = "Agent Mom: a lean Pi-backed local web shell";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
@@ -30,11 +30,11 @@
       packages = forAllSystems ({ pkgs, system, ... }:
         let
           smolvmReleaseSystems = [ "aarch64-linux" "x86_64-linux" ];
-          agentgranny2 = pkgs.callPackage ./nix/package.nix { };
+          agentmom = pkgs.callPackage ./nix/package.nix { };
         in
         {
-          inherit agentgranny2;
-          default = agentgranny2;
+          inherit agentmom;
+          default = agentmom;
         } // nixpkgs.lib.optionalAttrs (builtins.elem system smolvmReleaseSystems) {
           smolvm = pkgs.callPackage ./nix/smolvm-release.nix { };
         });
@@ -42,11 +42,11 @@
       apps = forAllSystems ({ pkgs, system, ... }: {
         default = {
           type = "app";
-          program = "${self.packages.${system}.agentgranny2}/bin/agentgranny2";
+          program = "${self.packages.${system}.agentmom}/bin/agentmom";
         };
       });
 
-      nixosModules.default = self.nixosModules.agentgranny2;
-      nixosModules.agentgranny2 = import ./nix/module.nix { inherit self; };
+      nixosModules.default = self.nixosModules.agentmom;
+      nixosModules.agentmom = import ./nix/module.nix { inherit self; };
     };
 }

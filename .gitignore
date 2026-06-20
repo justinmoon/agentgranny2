@@ -2,8 +2,8 @@ node_modules/
 dist/
 result
 .direnv/
-.agentgranny2/
-.agentgranny2-auth/
+.agentmom/
+.agentmom-auth/
 .smoke-workspace/
 .env
 .env.prod

@@ -140,7 +140,7 @@ export class SmolvmRuntime {
     const stopped = this.snapshot();
 
     await this.ensureReady();
-    const probe = await this.execInGuest("printf granny-resume-ok", this.config.smolvm.guestWorkspace, {
+    const probe = await this.execInGuest("printf agentmom-resume-ok", this.config.smolvm.guestWorkspace, {
       timeout: 30
     });
     if (probe.exitCode !== 0) {

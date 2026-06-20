@@ -3,16 +3,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 
-const workspace = mkdtempSync(join(tmpdir(), "agentgranny2-deploy-"));
+const workspace = mkdtempSync(join(tmpdir(), "agentmom-deploy-"));
 const agentCwd = join(workspace, "projects");
 const projectPath = join(agentCwd, "demo");
 
-process.env.AGENTGRANNY_WORKSPACE = workspace;
-process.env.AGENTGRANNY_AGENT_CWD = agentCwd;
-process.env.AGENTGRANNY_DEPLOYMENT_DIR = join(workspace, ".agentgranny2", "deployments");
-process.env.AGENTGRANNY_DEPLOYMENT_BASE_DOMAIN = "granny-stage.agentmom.xyz";
-process.env.AGENTGRANNY_DEPLOYMENT_READY_TIMEOUT_MS = "2500";
-process.env.AGENTGRANNY_PODMAN_COMMAND ??= "podman";
+process.env.AGENTMOM_WORKSPACE = workspace;
+process.env.AGENTMOM_AGENT_CWD = agentCwd;
+process.env.AGENTMOM_DEPLOYMENT_DIR = join(workspace, ".agentmom", "deployments");
+process.env.AGENTMOM_DEPLOYMENT_BASE_DOMAIN = "mom-stage.agentmom.xyz";
+process.env.AGENTMOM_DEPLOYMENT_READY_TIMEOUT_MS = "2500";
+process.env.AGENTMOM_PODMAN_COMMAND ??= "podman";
 
 mkdirSync(projectPath, { recursive: true });
 
@@ -28,19 +28,19 @@ let deployedSlug: string | undefined;
 try {
   const deployment = await manager.publish({ path: "demo", slug: "smoke-demo", port: 3000 });
   deployedSlug = deployment.slug;
-  if (deployment.url !== "https://smoke-demo.granny-stage.agentmom.xyz/") {
+  if (deployment.url !== "https://smoke-demo.mom-stage.agentmom.xyz/") {
     throw new Error(`Unexpected deployment URL: ${deployment.url}`);
   }
-  if (deploymentSlugFromHost("smoke-demo.granny-stage.agentmom.xyz", "granny-stage.agentmom.xyz") !== "smoke-demo") {
+  if (deploymentSlugFromHost("smoke-demo.mom-stage.agentmom.xyz", "mom-stage.agentmom.xyz") !== "smoke-demo") {
     throw new Error("Deployment host parser did not recognize slug host");
   }
-  if (deploymentSlugFromHost("granny-stage.agentmom.xyz", "granny-stage.agentmom.xyz") !== undefined) {
+  if (deploymentSlugFromHost("mom-stage.agentmom.xyz", "mom-stage.agentmom.xyz") !== undefined) {
     throw new Error("Deployment host parser should not route the base app host");
   }
-  if (!isAllowedDeploymentDomain("smoke-demo.granny-stage.agentmom.xyz", "granny-stage.agentmom.xyz")) {
+  if (!isAllowedDeploymentDomain("smoke-demo.mom-stage.agentmom.xyz", "mom-stage.agentmom.xyz")) {
     throw new Error("TLS ask helper did not allow deployment host");
   }
-  if (isAllowedDeploymentDomain("nested.smoke-demo.granny-stage.agentmom.xyz", "granny-stage.agentmom.xyz")) {
+  if (isAllowedDeploymentDomain("nested.smoke-demo.mom-stage.agentmom.xyz", "mom-stage.agentmom.xyz")) {
     throw new Error("TLS ask helper should not allow nested deployment hosts");
   }
 
@@ -251,7 +251,7 @@ async function expectMissing(args: string[], message: string): Promise<void> {
 
 function runPodman(args: string[]): Promise<{ exitCode: number; output: string }> {
   return new Promise((resolvePromise, reject) => {
-    const child = spawn(process.env.AGENTGRANNY_PODMAN_COMMAND ?? "podman", args, {
+    const child = spawn(process.env.AGENTMOM_PODMAN_COMMAND ?? "podman", args, {
       stdio: ["ignore", "pipe", "pipe"]
     });
     const chunks: Buffer[] = [];

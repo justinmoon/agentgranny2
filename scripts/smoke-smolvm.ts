@@ -5,15 +5,15 @@ import { loadConfig } from "../src/config.js";
 import { SmolvmRuntime } from "../src/smolvm.js";
 
 const workspace = resolve(".smoke-smolvm-workspace");
-const machineName = `agentgranny2-smoke-${Date.now().toString(36)}`;
+const machineName = `agentmom-smoke-${Date.now().toString(36)}`;
 
 rmSync(workspace, { recursive: true, force: true });
 mkdirSync(workspace, { recursive: true });
 
-process.env.AGENTGRANNY_EXECUTOR = "smolvm";
-process.env.AGENTGRANNY_WORKSPACE = workspace;
-process.env.AGENTGRANNY_STATE_DIR = join(workspace, ".agentgranny2");
-process.env.AGENTGRANNY_SMOLVM_NAME = machineName;
+process.env.AGENTMOM_EXECUTOR = "smolvm";
+process.env.AGENTMOM_WORKSPACE = workspace;
+process.env.AGENTMOM_STATE_DIR = join(workspace, ".agentmom");
+process.env.AGENTMOM_SMOLVM_NAME = machineName;
 
 const config = loadConfig();
 const runtime = new SmolvmRuntime(config);
@@ -50,7 +50,7 @@ try {
   } catch {
     // Best-effort cleanup for the disposable smoke machine.
   }
-  if (process.env.AGENTGRANNY_KEEP_SMOKE !== "1") {
+  if (process.env.AGENTMOM_KEEP_SMOKE !== "1") {
     rmSync(workspace, { recursive: true, force: true });
   }
 }
