@@ -7,11 +7,13 @@ let
 
   # Host age identities from /etc/age/key.txt.
   mom_1 = "age16293kjnhamtq3e4nu0q8ydcguy0eajesmkvakrxhudaqtdgq6dqqc38vjv";
+  mom_stage_1 = "age1mtf29wt0we3adcja7k0ylc9hmf2fns3c44qz9g663l0ydepxqdrq94jzzf";
 
   allKeys = [
     yubikey_primary
     yubikey_backup
     mom_1
+    mom_stage_1
   ];
 in
 {

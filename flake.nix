@@ -23,21 +23,26 @@
       forAllSystems = f:
         nixpkgs.lib.genAttrs systems (system:
           f { pkgs = nixpkgs.legacyPackages.${system}; inherit system; });
-      hostModules = [
+      mkHostModules = module: [
         agenix.nixosModules.default
         disko.nixosModules.disko
-        ./nix/hosts/mom-1/configuration.nix
+        module
       ];
       mkHost = module:
         nixpkgs.lib.nixosSystem {
           system = "x86_64-linux";
           specialArgs = { inherit self; };
-          modules = [
-            agenix.nixosModules.default
-            disko.nixosModules.disko
-            module
-          ];
+          modules = mkHostModules module;
         };
+      mkColmenaNode = { module, targetHost, tags }: {
+        imports = mkHostModules module;
+        deployment = {
+          inherit targetHost tags;
+          targetUser = "justin";
+          buildOnTarget = true;
+          replaceUnknownProfiles = true;
+        };
+      };
     in {
       devShells = forAllSystems ({ pkgs, system, ... }: {
         default = pkgs.mkShell {
@@ -96,15 +101,16 @@
           specialArgs = { inherit self; };
         };
 
-        mom-1 = {
-          imports = hostModules;
-          deployment = {
-            targetHost = "mom-1";
-            targetUser = "justin";
-            buildOnTarget = true;
-            replaceUnknownProfiles = true;
-            tags = [ "agentmom" "prod" ];
-          };
+        mom-1 = mkColmenaNode {
+          module = ./nix/hosts/mom-1/configuration.nix;
+          targetHost = "mom-1";
+          tags = [ "agentmom" "prod" ];
+        };
+
+        mom-stage-1 = mkColmenaNode {
+          module = ./nix/hosts/mom-stage-1/configuration.nix;
+          targetHost = "100.92.189.28";
+          tags = [ "agentmom" "stage" ];
         };
       };
     };

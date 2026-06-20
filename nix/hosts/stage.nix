@@ -10,7 +10,7 @@
     stateDir = "/data/agentmom-web";
     workspaceDir = "/data/agentmom-web/workspace";
     openRouterKeyFile = "/run/agenix/agentmom-openrouter-api-key";
-    deploymentBaseDomain = "mom-stage.agentmom.xyz";
+    deploymentBaseDomain = "stage.agentmom.xyz";
 
     caddy = {
       enable = true;

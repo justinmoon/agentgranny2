@@ -1,5 +1,7 @@
 set dotenv-load := false
 
+stage_host := "justin@100.92.189.28"
+
 dev:
     nix develop -c npm run dev
 
@@ -42,8 +44,14 @@ start:
 fleet-build-prod:
     nix develop -c colmena build --on mom-1
 
+fleet-build-stage:
+    nix develop -c colmena build --on mom-stage-1
+
 fleet-status-prod:
     nix develop -c colmena exec --on mom-1 -- systemctl --no-pager --failed
+
+fleet-status-stage:
+    nix develop -c colmena exec --on mom-stage-1 -- systemctl --no-pager --failed
 
 check-prod:
     #!/usr/bin/env bash
@@ -78,37 +86,12 @@ check-prod:
     echo "prod check ok"
     REMOTE
 
-deploy-stage:
+check-stage:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    branch="$(git branch --show-current)"
-    if [[ "${branch}" != "master" ]]; then
-      echo "deploy-stage expects master; current branch is ${branch}" >&2
-      exit 1
-    fi
-
-    if ! git diff --quiet || ! git diff --cached --quiet; then
-      echo "commit or stash local changes before deploy-stage" >&2
-      exit 1
-    fi
-
-    git push origin master
-
-    ssh mom-stage-1 'bash -se' <<'REMOTE'
+    ssh {{stage_host}} 'bash -se' <<'REMOTE'
     set -euo pipefail
-    sudo mkdir -p /srv/agentmom/source
-    sudo chown -R justin:users /srv/agentmom
-    rm -rf /srv/agentmom/source/*
-    REMOTE
-
-    git archive --format=tar HEAD | ssh mom-stage-1 'tar -xf - -C /srv/agentmom/source'
-
-    ssh mom-stage-1 'bash -se' <<'REMOTE'
-    set -euo pipefail
-    cd /srv/agentmom
-    nix build --out-link result /srv/agentmom/source#agentmom
-    sudo systemctl restart agentmom
 
     for attempt in $(seq 1 60); do
       health_json="$(curl -fsS http://127.0.0.1:7392/api/health || true)"
@@ -135,6 +118,11 @@ deploy-stage:
 
     echo "stage deploy ok"
     REMOTE
+
+deploy-stage:
+    nix develop -c colmena apply --on mom-stage-1
+    nix develop -c colmena exec --on mom-stage-1 -- sudo systemctl restart agentmom
+    just check-stage
 
 deploy-prod:
     nix develop -c colmena apply --on mom-1
