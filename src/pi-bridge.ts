@@ -46,6 +46,7 @@ export class PiBridge {
   private listeners = new Set<StateListener>();
   private smolvm?: SmolvmRuntime;
   private previewProcesses = new Set<ChildProcess>();
+  private sessionSummaries: SessionSummary[] = [];
 
   constructor(
     private readonly config: AppConfig,
@@ -68,16 +69,18 @@ export class PiBridge {
   }
 
   async snapshot(): Promise<AppState> {
-    return {
-      ...this.snapshotSync(),
-      sessions: await this.listSessions()
-    };
+    await this.refreshSessionSummaries();
+    return this.snapshotSync();
   }
 
   async listSessions(): Promise<SessionSummary[]> {
+    return this.refreshSessionSummaries();
+  }
+
+  private async refreshSessionSummaries(): Promise<SessionSummary[]> {
     try {
       const sessions = await SessionManager.list(this.config.agentCwd, this.config.sessionDir);
-      return sessions.map((session) => ({
+      this.sessionSummaries = sessions.map((session) => ({
         id: session.id,
         path: session.path,
         name: session.name,
@@ -86,8 +89,9 @@ export class PiBridge {
         messageCount: session.messageCount,
         modified: session.modified.toISOString()
       }));
+      return this.sessionSummaries;
     } catch {
-      return [];
+      return this.sessionSummaries;
     }
   }
 
@@ -328,7 +332,7 @@ export class PiBridge {
             cwd: this.config.agentCwd
           }
         : undefined,
-      sessions: [],
+      sessions: this.sessionSummaries,
       previews: this.previews.list(),
       messages,
       events: this.events,
