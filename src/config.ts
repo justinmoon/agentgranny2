@@ -22,6 +22,7 @@ export type AppConfig = {
   deploymentBaseDomain?: string;
   previewBasePath: string;
   openRouterModel: string;
+  thinkingLevel: ThinkingLevel;
   appEnvFile: string;
   openRouterApiKey?: string;
   braveApiKey?: string;
@@ -46,6 +47,9 @@ export type AppConfig = {
 };
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const THINKING_LEVELS = ["minimal", "low", "medium", "high", "xhigh"] as const;
+
+export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 
 export type LoadConfigOptions = {
   requireServiceSecrets?: boolean;
@@ -103,6 +107,13 @@ function domainFromEnv(name: string): string | undefined {
   const raw = process.env[name]?.trim().toLowerCase();
   if (!raw) return undefined;
   return raw.replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/\.$/, "");
+}
+
+function thinkingLevelFromEnv(name: string, fallback: ThinkingLevel): ThinkingLevel {
+  const raw = process.env[name]?.trim().toLowerCase();
+  if (!raw) return fallback;
+  if ((THINKING_LEVELS as readonly string[]).includes(raw)) return raw as ThinkingLevel;
+  throw new Error(`Invalid ${name}: ${raw}; expected one of ${THINKING_LEVELS.join(", ")}`);
 }
 
 function readGitCommit(): string | undefined {
@@ -184,7 +195,8 @@ export function loadConfig(options: LoadConfigOptions = {}): AppConfig {
     deploymentDir: resolve(process.env.AGENTMOM_DEPLOYMENT_DIR ?? `${stateDir}/deployments`),
     deploymentBaseDomain: domainFromEnv("AGENTMOM_DEPLOYMENT_BASE_DOMAIN"),
     previewBasePath: process.env.AGENTMOM_PREVIEW_BASE_PATH ?? "/preview",
-    openRouterModel: process.env.AGENTMOM_OPENROUTER_MODEL ?? "anthropic/claude-sonnet-4.5",
+    openRouterModel: process.env.AGENTMOM_OPENROUTER_MODEL ?? "anthropic/claude-sonnet-4.6",
+    thinkingLevel: thinkingLevelFromEnv("AGENTMOM_THINKING_LEVEL", "low"),
     appEnvFile,
     openRouterApiKey,
     braveApiKey,

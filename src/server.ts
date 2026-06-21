@@ -558,6 +558,7 @@ async function startServer(): Promise<void> {
   console.log(`agentCwd=${config.agentCwd}`);
   console.log(`executor=${config.executor}`);
   console.log(`model=openrouter/${config.openRouterModel}`);
+  console.log(`thinkingLevel=${config.thinkingLevel}`);
 }
 
 function listenOn(port: number): Promise<number> {

@@ -174,7 +174,7 @@ export class PiBridge {
       authStorage,
       modelRegistry,
       model,
-      thinkingLevel: "minimal",
+      thinkingLevel: this.config.thinkingLevel,
       sessionManager,
       resourceLoader,
       tools: ACTIVE_TOOLS,

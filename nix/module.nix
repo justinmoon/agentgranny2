@@ -105,8 +105,14 @@ in
 
     model = lib.mkOption {
       type = lib.types.str;
-      default = "anthropic/claude-sonnet-4.5";
+      default = "anthropic/claude-sonnet-4.6";
       description = "OpenRouter model id.";
+    };
+
+    thinkingLevel = lib.mkOption {
+      type = lib.types.enum [ "minimal" "low" "medium" "high" "xhigh" ];
+      default = "low";
+      description = "Pi thinking level for agent sessions.";
     };
 
     caddy = {
@@ -232,6 +238,7 @@ in
             AGENTMOM_EXECUTOR = "smolvm";
             AGENTMOM_HOST = cfg.host;
             AGENTMOM_OPENROUTER_MODEL = cfg.model;
+            AGENTMOM_THINKING_LEVEL = cfg.thinkingLevel;
             AGENTMOM_PODMAN_COMMAND = lib.getExe pkgs.podman;
             AGENTMOM_PORT = toString cfg.port;
             AGENTMOM_SESSION_DIR = "${cfg.stateDir}/app/sessions";
