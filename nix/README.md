@@ -36,7 +36,7 @@ or import the base module and set options directly:
     enable = true;
     stateDir = "/data/agentmom-web";
     workspaceDir = "/data/agentmom-web/workspace";
-    openRouterKeyFile = "/run/agenix/agentmom-openrouter-api-key";
+    envFile = "/run/agenix/agentmom-secrets";
     deploymentBaseDomain = "agentmom.xyz";
 
     caddy = {
@@ -47,23 +47,23 @@ or import the base module and set options directly:
 }
 ```
 
-The OpenRouter key is passed with systemd credentials, so the source secret can
+The app env file is passed with systemd credentials, so the source secret can
 stay root-only. Podman is enabled by the module and the service user gets
 subuid/subgid ranges for rootless container builds.
 
-Application secrets live in `nix/secrets/openrouter-api-key.age`. Despite the
-legacy filename, it is an env file read through a systemd credential and can
-contain:
+Application secrets live in `nix/secrets/secrets.age`. It is an env file read
+through a systemd credential and must contain:
 
 ```env
 OPENROUTER_API_KEY=...
 AGENTMOM_TELEGRAM_BOT_TOKEN=...
+BRAVE_API_KEY=...
 ```
 
 Edit it with agenix:
 
 ```bash
-RULES=nix/secrets/secrets.nix agenix -e nix/secrets/openrouter-api-key.age -i ~/configs/yubikeys/keys.txt
+RULES=nix/secrets/secrets.nix agenix -e nix/secrets/secrets.age -i ~/configs/yubikeys/keys.txt
 ```
 
 The stage and prod host modules assume Caddy runs on the same host as the app.

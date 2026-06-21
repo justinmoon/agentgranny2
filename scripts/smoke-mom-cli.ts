@@ -4,6 +4,7 @@ import { chmodSync, existsSync, mkdtempSync, realpathSync, rmSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig } from "../src/config.js";
+import { previewRequestHeaders } from "../src/http-utils.js";
 import { PreviewManager } from "../src/previews.js";
 
 const root = mkdtempSync(join(tmpdir(), "agentmom-cli-"));
@@ -50,6 +51,22 @@ try {
   process.env.AGENTMOM_SMOLVM_GUEST_WORKSPACE = "/workspace";
   const smolvmInstall = new PreviewManager(loadConfig()).cliInstall();
   assert.equal(smolvmInstall.guestBinDir, "/workspace/.agentmom/bin");
+  const smolvmPreviews = new PreviewManager(loadConfig());
+  assert.equal(smolvmPreviews.register({ port: 4322, name: "guest app" }).runtime, "smolvm");
+  assert.equal(smolvmPreviews.register({ port: 4323, name: "host static", runtime: "local" }).runtime, "local");
+
+  const previewHeaders = previewRequestHeaders({
+    headers: {
+      cookie: "agentmom_session=secret; preview_session=keep",
+      authorization: "Bearer secret",
+      "proxy-authorization": "Basic secret",
+      accept: "text/html"
+    }
+  } as never);
+  assert.equal(previewHeaders.cookie, "preview_session=keep");
+  assert.equal(previewHeaders.authorization, "Bearer secret");
+  assert.equal(previewHeaders["proxy-authorization"], undefined);
+  assert.equal(previewHeaders.accept, "text/html");
 
   console.log("mom cli smoke ok");
 } finally {

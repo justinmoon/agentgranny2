@@ -45,8 +45,8 @@
   services.dbus.implementation = "dbus";
 
   age.identityPaths = [ "/etc/age/key.txt" ];
-  age.secrets.agentmom-openrouter-api-key = {
-    file = ../../secrets/openrouter-api-key.age;
+  age.secrets.agentmom-secrets = {
+    file = ../../secrets/secrets.age;
     owner = "root";
     group = "root";
     mode = "0400";

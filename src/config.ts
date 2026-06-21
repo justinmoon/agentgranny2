@@ -22,7 +22,7 @@ export type AppConfig = {
   deploymentBaseDomain?: string;
   previewBasePath: string;
   openRouterModel: string;
-  openRouterEnvFile: string;
+  appEnvFile: string;
   openRouterApiKey?: string;
   braveApiKey?: string;
   telegram: {
@@ -47,6 +47,10 @@ export type AppConfig = {
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
+export type LoadConfigOptions = {
+  requireServiceSecrets?: boolean;
+};
+
 function readEnvFileValue(path: string, name: string): string | undefined {
   if (!existsSync(path)) return undefined;
 
@@ -69,6 +73,10 @@ function readEnvFileValue(path: string, name: string): string | undefined {
   }
 
   return undefined;
+}
+
+function envFilePath(): string {
+  return resolve(process.env.AGENTMOM_ENV_FILE ?? `${rootDir}/.env`);
 }
 
 function readOpenRouterKeyFile(path: string): string | undefined {
@@ -109,27 +117,56 @@ function readGitCommit(): string | undefined {
   }
 }
 
-export function loadConfig(): AppConfig {
+function requireServiceSecrets(config: {
+  appEnvFile: string;
+  openRouterApiKey?: string;
+  braveApiKey?: string;
+  telegramBotToken?: string;
+}): void {
+  const missing: string[] = [];
+  if (!config.openRouterApiKey) missing.push("OPENROUTER_API_KEY");
+  if (!config.telegramBotToken) missing.push("AGENTMOM_TELEGRAM_BOT_TOKEN");
+  if (!config.braveApiKey) missing.push("BRAVE_API_KEY");
+
+  if (missing.length === 0) return;
+
+  const sourceHint = existsSync(config.appEnvFile)
+    ? `env file: ${config.appEnvFile}`
+    : `missing env file: ${config.appEnvFile}`;
+  throw new Error(`Missing required app secrets (${missing.join(", ")}); checked ${sourceHint}`);
+}
+
+export function loadConfig(options: LoadConfigOptions = {}): AppConfig {
   const workspace = resolve(process.env.AGENTMOM_WORKSPACE ?? process.cwd());
   const workspaceRoot = resolve(process.env.AGENTMOM_WORKSPACE_ROOT ?? `${workspace}/workspaces`);
   const projectsDir = resolve(process.env.AGENTMOM_PROJECTS_DIR ?? `${workspace}/projects`);
   const agentCwd = resolve(process.env.AGENTMOM_AGENT_CWD ?? projectsDir);
-  const openRouterEnvFile = resolve(process.env.AGENTMOM_OPENROUTER_ENV_FILE ?? `${rootDir}/.env`);
-  const openRouterApiKey = process.env.OPENROUTER_API_KEY ?? readOpenRouterKeyFile(openRouterEnvFile);
+  const appEnvFile = envFilePath();
+  const openRouterApiKey = process.env.OPENROUTER_API_KEY ?? readOpenRouterKeyFile(appEnvFile);
   const braveApiKey =
     process.env.BRAVE_API_KEY ??
     process.env.BRAVE_SEARCH_API_KEY ??
-    readEnvFileValue(openRouterEnvFile, "BRAVE_API_KEY") ??
-    readEnvFileValue(openRouterEnvFile, "BRAVE_SEARCH_API_KEY");
+    readEnvFileValue(appEnvFile, "BRAVE_API_KEY") ??
+    readEnvFileValue(appEnvFile, "BRAVE_SEARCH_API_KEY");
   const telegramBotToken =
     process.env.AGENTMOM_TELEGRAM_BOT_TOKEN ??
-    readEnvFileValue(openRouterEnvFile, "AGENTMOM_TELEGRAM_BOT_TOKEN");
+    readEnvFileValue(appEnvFile, "AGENTMOM_TELEGRAM_BOT_TOKEN");
 
   if (openRouterApiKey && !process.env.OPENROUTER_API_KEY) {
     process.env.OPENROUTER_API_KEY = openRouterApiKey;
   }
+  if (braveApiKey && !process.env.BRAVE_API_KEY) {
+    process.env.BRAVE_API_KEY = braveApiKey;
+  }
+  if (telegramBotToken && !process.env.AGENTMOM_TELEGRAM_BOT_TOKEN) {
+    process.env.AGENTMOM_TELEGRAM_BOT_TOKEN = telegramBotToken;
+  }
 
   const stateDir = resolve(process.env.AGENTMOM_STATE_DIR ?? `${workspace}/.agentmom`);
+
+  if (options.requireServiceSecrets) {
+    requireServiceSecrets({ appEnvFile, openRouterApiKey, braveApiKey, telegramBotToken });
+  }
 
   return {
     appCommit: process.env.AGENTMOM_COMMIT ?? readGitCommit(),
@@ -148,7 +185,7 @@ export function loadConfig(): AppConfig {
     deploymentBaseDomain: domainFromEnv("AGENTMOM_DEPLOYMENT_BASE_DOMAIN"),
     previewBasePath: process.env.AGENTMOM_PREVIEW_BASE_PATH ?? "/preview",
     openRouterModel: process.env.AGENTMOM_OPENROUTER_MODEL ?? "anthropic/claude-sonnet-4.5",
-    openRouterEnvFile,
+    appEnvFile,
     openRouterApiKey,
     braveApiKey,
     telegram: {

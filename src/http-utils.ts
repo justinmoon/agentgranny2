@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, join } from "node:path";
+import { SESSION_COOKIE } from "./catalog.js";
 import { requestHeaders } from "./proxy-utils.js";
 
 export function isSecureRequest(req: IncomingMessage): boolean {
@@ -21,6 +22,31 @@ export function deploymentRequestHeaders(req: IncomingMessage): Record<string, s
 
   headers["x-forwarded-proto"] = firstHeader(req.headers["x-forwarded-proto"]) || (isSecureRequest(req) ? "https" : "http");
   return headers;
+}
+
+export function previewRequestHeaders(req: IncomingMessage): Record<string, string> {
+  const headers = requestHeaders(req.headers);
+  const cookie = stripCookie(headers.cookie, SESSION_COOKIE);
+  if (cookie) {
+    headers.cookie = cookie;
+  } else {
+    delete headers.cookie;
+  }
+  return headers;
+}
+
+export function stripCookie(cookieHeader: string | undefined, name: string): string | undefined {
+  if (!cookieHeader) return undefined;
+  const next = cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .filter((part) => {
+      const equals = part.indexOf("=");
+      const key = equals === -1 ? part : part.slice(0, equals);
+      return key !== name;
+    })
+    .join("; ");
+  return next || undefined;
 }
 
 export function firstHeader(value: string | string[] | undefined): string | undefined {

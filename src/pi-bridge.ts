@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdirSync } from "node:fs";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { createServer as createHttpServer, type Server as HttpServer } from "node:http";
+import { basename, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { getModel } from "@earendil-works/pi-ai";
 import type { AssistantMessage, ImageContent, Model, TextContent, UserMessage } from "@earendil-works/pi-ai";
 import {
@@ -34,6 +35,7 @@ import {
   userMessageAttachments
 } from "./message-attachments.js";
 import { SmolvmRuntime } from "./smolvm.js";
+import { allocatePort } from "./process-utils.js";
 import type { AppState, ChatMessage, MessageAttachment, SessionSummary, UiEvent } from "./types.js";
 import { createWebSearchTool } from "./web-search.js";
 
@@ -55,6 +57,9 @@ export class PiBridge {
   private smolvm?: SmolvmRuntime;
   private previewProcesses = new Set<ChildProcess>();
   private sessionSummaries: SessionSummary[] = [];
+  private autoPreviewServers = new Map<string, HttpServer>();
+  private autoServing = false;
+  private lastTurnStartedAt = 0;
 
   constructor(
     private readonly config: AppConfig,
@@ -141,8 +146,10 @@ export class PiBridge {
         ...base,
         [
           "## Agent Mom Preview",
+          "- IMPORTANT: As soon as you finish building anything that renders in a browser (a website, web app, or HTML page), automatically start a preview server with `mom serve` as your final step — do this on your own, without being asked, so the user can immediately see what they created.",
           "- For preview servers, run `mom serve <port> <name> -- <command>` from the project directory.",
-          "- Example: `mom serve 8080 \"My App\" -- npm run dev -- --host 0.0.0.0`.",
+          "- Example (framework app): `mom serve 8080 \"My App\" -- npm run dev -- --host 0.0.0.0`.",
+          "- Example (static site with an index.html): `mom serve 8080 \"My Site\" -- python3 -m http.server 8080`.",
           "- Use `mom expose <port> <name>` only if a preview server is already running.",
           "- The preview name is required and should be human-readable.",
           "- Do not expose the parent workspace directory unless the user asked for a directory listing.",
@@ -240,6 +247,7 @@ export class PiBridge {
 
   removePreview(id: string): AppState {
     if (this.previews.remove(id)) {
+      this.closeAutoPreviewServer(id);
       this.addEvent("preview", "Preview removed", id);
       this.emit();
     }
@@ -268,6 +276,11 @@ export class PiBridge {
     } catch (error) {
       this.lastError = error instanceof Error ? error.message : String(error);
       this.addEvent("runtime", "Resume test failed", this.lastError, true);
+    } finally {
+      const removed = this.previews.removeByRuntime("smolvm");
+      if (removed.length > 0) {
+        this.addEvent("preview", "Cleared smolvm previews", `${removed.length} preview process(es) were stopped by resume testing`);
+      }
     }
 
     this.emit();
@@ -278,6 +291,7 @@ export class PiBridge {
     this.disposeCurrentSession();
     void this.smolvm?.dispose();
     this.disposePreviewProcesses();
+    this.disposeAutoPreviewServers();
     this.listeners.clear();
   }
 
@@ -293,9 +307,11 @@ export class PiBridge {
   private handleEvent(event: AgentSessionEvent): void {
     if (event.type === "agent_start") {
       this.isRunning = true;
+      this.lastTurnStartedAt = Date.now();
       this.addEvent("agent", "Turn started");
     } else if (event.type === "agent_end") {
       this.addEvent("agent", event.willRetry ? "Turn ended; retry pending" : "Turn ended");
+      if (!event.willRetry) void this.maybeAutoServePreview(this.lastTurnStartedAt);
     } else if (event.type === "message_start" || event.type === "message_update" || event.type === "message_end") {
       const message = event.message;
       if (message.role === "user" || message.role === "assistant") {
@@ -492,11 +508,75 @@ export class PiBridge {
     this.addEvent("preview", "Preview process started", `${registration.name} :${registration.port}`);
   }
 
+  // After a turn, if the agent built a renderable site but didn't expose it,
+  // serve it automatically so the preview opens on its own.
+  private async maybeAutoServePreview(turnStartedAt: number): Promise<void> {
+    if (this.autoServing) return;
+    if (this.previews.list().length > 0) return;
+    this.autoServing = true;
+    try {
+      const dir = this.findRenderableDir(turnStartedAt);
+      if (!dir) return;
+      const port = await allocatePort();
+      const server = createStaticServer(dir);
+      await new Promise<void>((resolvePromise, reject) => {
+        server.once("error", reject);
+        server.listen(port, "127.0.0.1", () => resolvePromise());
+      });
+      const name = basename(dir) || "Preview";
+      const service = this.previews.register({ port, name, runtime: "local" });
+      this.autoPreviewServers.set(service.id, server);
+      server.on("close", () => this.autoPreviewServers.delete(service.id));
+      this.addEvent("preview", "Preview ready", `${name} is live — opening preview`);
+      this.emit();
+    } catch (error) {
+      this.addEvent("preview", "Auto preview failed", error instanceof Error ? error.message : String(error), true);
+      this.emit();
+    } finally {
+      this.autoServing = false;
+    }
+  }
+
+  // Find the most recently built directory that has an index.html.
+  private findRenderableDir(minModifiedAt: number): string | undefined {
+    const root = this.resolveAgentPath(this.config.agentCwd);
+    const candidates: string[] = [];
+    if (isFreshStaticIndex(join(root, "index.html"), minModifiedAt)) candidates.push(root);
+    try {
+      for (const entry of readdirSync(root, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
+        const sub = join(root, entry.name);
+        if (isFreshStaticIndex(join(sub, "index.html"), minModifiedAt)) candidates.push(sub);
+      }
+    } catch {
+      // ignore unreadable directories
+    }
+    if (candidates.length === 0) return undefined;
+    candidates.sort(
+      (a, b) => statSync(join(b, "index.html")).mtimeMs - statSync(join(a, "index.html")).mtimeMs
+    );
+    return candidates[0];
+  }
+
   private disposePreviewProcesses(): void {
     for (const child of this.previewProcesses) {
       child.kill("SIGTERM");
     }
     this.previewProcesses.clear();
+  }
+
+  private closeAutoPreviewServer(id: string): void {
+    const server = this.autoPreviewServers.get(id);
+    if (!server) return;
+    this.autoPreviewServers.delete(id);
+    server.close();
+  }
+
+  private disposeAutoPreviewServers(): void {
+    for (const id of [...this.autoPreviewServers.keys()]) {
+      this.closeAutoPreviewServer(id);
+    }
   }
 
   private async handleDeploymentRegistration(
@@ -665,4 +745,74 @@ function truncate(value: string, max = 1200): string {
 
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function isFreshStaticIndex(path: string, minModifiedAt: number): boolean {
+  try {
+    if (!existsSync(path) || statSync(path).mtimeMs < minModifiedAt - 1000) return false;
+    const html = readFileSync(path, "utf8");
+    return !/<script\b[^>]*\btype=["']module["'][^>]*\bsrc=["']\/src\//i.test(html);
+  } catch {
+    return false;
+  }
+}
+
+const STATIC_MIME: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".htm": "text/html; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+  ".webp": "image/webp",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
+  ".txt": "text/plain; charset=utf-8",
+  ".map": "application/json; charset=utf-8"
+};
+
+// Minimal static file server for auto-previewing a built site (no extra deps).
+function createStaticServer(rootDir: string): HttpServer {
+  const root = resolve(rootDir);
+  return createHttpServer((req, res) => {
+    try {
+      const url = new URL(req.url ?? "/", "http://localhost");
+      let pathname = decodeURIComponent(url.pathname);
+      if (pathname.endsWith("/")) pathname += "index.html";
+      let target = resolve(root, `.${pathname}`);
+      if (target !== root && !target.startsWith(`${root}/`)) {
+        res.statusCode = 403;
+        res.end("Forbidden");
+        return;
+      }
+      if (existsSync(target) && statSync(target).isDirectory()) {
+        target = join(target, "index.html");
+      }
+      if (!existsSync(target)) {
+        // Single-page-app fallback to the root index.html
+        const fallback = join(root, "index.html");
+        if (existsSync(fallback)) {
+          target = fallback;
+        } else {
+          res.statusCode = 404;
+          res.end("Not found");
+          return;
+        }
+      }
+      const body = readFileSync(target);
+      res.statusCode = 200;
+      res.setHeader("Content-Type", STATIC_MIME[extname(target).toLowerCase()] ?? "application/octet-stream");
+      res.end(body);
+    } catch {
+      res.statusCode = 500;
+      res.end("Preview error");
+    }
+  });
 }

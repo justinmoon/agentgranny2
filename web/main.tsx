@@ -1,33 +1,36 @@
 import {
   AssistantRuntimeProvider,
-  MessagePrimitive,
   ThreadPrimitive,
   useExternalStoreRuntime,
   type AppendMessage,
   type ThreadMessageLike
 } from "@assistant-ui/react";
 import {
+  ChevronDown,
+  FilePen,
+  FilePlus2,
+  FileText,
   GitBranch,
+  Lightbulb,
   LogOut,
   MessageCircle,
-  PanelRightClose,
   PanelRightOpen,
-  Play,
-  RefreshCw,
-  RotateCcw,
   SquarePen,
   Terminal,
   UserPlus
 } from "lucide-react";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type {
   AppState,
   ChatMessage,
   MeState,
   MessageAttachment,
   PreviewService,
-  SessionSummary
+  SessionSummary,
+  UiEvent
 } from "../src/types.js";
 import { AdminPage } from "./admin.js";
 import { AttachmentComposer, MessageAttachments } from "./attachment-composer.js";
@@ -35,6 +38,8 @@ import { AuthScreen, LoadingScreen } from "./auth.js";
 import { readError, readJsonResponse, readResponseError } from "./http.js";
 import { RightPanel } from "./right-panel.js";
 import { TelegramSettingsPage } from "./telegram-settings.js";
+import "@fontsource-variable/dm-sans";
+import "@fontsource-variable/fraunces";
 import "./pages.css";
 import "./styles.css";
 import "./thread.css";
@@ -66,8 +71,7 @@ function App() {
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | undefined>();
   const [state, setState] = useState<AppState>(emptyState);
   const [error, setError] = useState<string | undefined>();
-  const [rightPanelOpen, setRightPanelOpen] = useState(true);
-  const [resumeTestRunning, setResumeTestRunning] = useState(false);
+  const [rightPanelOpen, setRightPanelOpen] = useState(false);
   const isAdminPage = window.location.pathname === "/admin";
   const isTelegramSettingsPage = window.location.pathname === "/settings/telegram";
 
@@ -139,7 +143,6 @@ function App() {
   }, [isAdminPage, isTelegramSettingsPage, refresh, selectedWorkspace?.id, workspaceUrl]);
 
   const messages = useMemo(() => state.messages.map(toThreadMessage), [state.messages]);
-  const messagesById = useMemo(() => new Map(state.messages.map((message) => [message.id, message])), [state.messages]);
   const sendMessage = useCallback(
     async (content: string, attachments: MessageAttachment[] = []) => {
       if (!content.trim() && attachments.length === 0) return;
@@ -169,6 +172,35 @@ function App() {
     onCancel: cancelTurn
   });
 
+  const toolActions = useMemo(() => parseToolActions(state.events), [state.events]);
+  const timeline = useMemo<TimelineItem[]>(() => {
+    const items: TimelineItem[] = [];
+    for (const message of state.messages) {
+      items.push({ key: `m-${message.id}`, at: Date.parse(message.createdAt), kind: "message", message });
+    }
+    for (const action of toolActions) {
+      items.push({ key: `t-${action.id}`, at: Date.parse(action.createdAt), kind: "tool", action });
+    }
+    items.sort((a, b) => a.at - b.at);
+    return items;
+  }, [state.messages, toolActions]);
+
+  const viewportRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [timeline.length, state.isRunning]);
+
+  // Auto-open the preview panel only once a live preview/website becomes available.
+  const previewCount = state.previews.length;
+  const prevPreviewCount = useRef(0);
+  useEffect(() => {
+    if (previewCount > 0 && prevPreviewCount.current === 0) {
+      setRightPanelOpen(true);
+    }
+    prevPreviewCount.current = previewCount;
+  }, [previewCount]);
+
   async function newSession() {
     const response = await fetch(workspaceUrl("/sessions"), {
       method: "POST",
@@ -190,20 +222,6 @@ function App() {
   async function removePreview(preview: PreviewService) {
     const response = await fetch(`${workspaceUrl("/previews")}/${encodeURIComponent(preview.id)}`, { method: "DELETE" });
     setState((await response.json()) as AppState);
-  }
-
-  async function testRuntimeResume() {
-    setResumeTestRunning(true);
-    setError(undefined);
-    try {
-      const response = await fetch(workspaceUrl("/runtime/resume-test"), { method: "POST" });
-      if (!response.ok) throw new Error(await readResponseError(response));
-      setState((await response.json()) as AppState);
-    } catch (err) {
-      setError(readError(err));
-    } finally {
-      setResumeTestRunning(false);
-    }
   }
 
   async function logout() {
@@ -237,8 +255,7 @@ function App() {
     <AssistantRuntimeProvider runtime={runtime}>
       <div className="app-shell">
         <aside className="sidebar">
-          <div className="brand">
-            <div className="brand-mark">AM</div>
+          <div className="brand brand-lg">
             <div>
               <h1>Agent Mom</h1>
               <p>{me.user.fullName}</p>
@@ -248,7 +265,14 @@ function App() {
           <div className="workspace-block">
             <span>Workspace</span>
             {me.workspaces.length > 1 ? (
-              <select value={selectedWorkspace.id} onChange={(event) => setSelectedWorkspaceId(event.target.value)}>
+              <select
+                value={selectedWorkspace.id}
+                onChange={(event) => {
+                  setSelectedWorkspaceId(event.target.value);
+                  setState(emptyState);
+                  setError(undefined);
+                }}
+              >
                 {me.workspaces.map((workspace) => (
                   <option value={workspace.id} key={workspace.id}>
                     {workspace.displayName}
@@ -258,56 +282,16 @@ function App() {
             ) : (
               <strong>{selectedWorkspace.displayName}</strong>
             )}
-            <code title={state.workspace}>{state.workspace || "loading"}</code>
-          </div>
-
-          <div className="workspace-block">
-            <span>Agent cwd</span>
-            <code title={state.agentCwd}>{state.agentCwd || "loading"}</code>
-          </div>
-
-          <div className="runtime-block">
-            <span>Runtime</span>
-            <strong>{state.runtime.executor}</strong>
-            {state.runtime.vm && (
-              <small title={state.runtime.vm.pid ? `pid ${state.runtime.vm.pid}` : undefined}>
-                {state.runtime.vm.name} · {state.runtime.vm.state}
-              </small>
-            )}
-            <button
-              type="button"
-              className="runtime-test-button"
-              onClick={() => void testRuntimeResume()}
-              disabled={state.runtime.executor !== "smolvm" || resumeTestRunning}
-              title={
-                state.runtime.executor === "smolvm"
-                  ? "Stop the smolvm, resume it, and run a guest smoke command"
-                  : "Resume test requires the smolvm executor"
-              }
-            >
-              <RotateCcw size={14} />
-              <span>{resumeTestRunning ? "Testing..." : "Test resume"}</span>
-            </button>
+            <code title={state.agentCwd || selectedWorkspace.machineName}>
+              {state.agentCwd || selectedWorkspace.machineName}
+            </code>
           </div>
 
           <div className="actions">
             <button type="button" onClick={newSession}>
               <SquarePen size={16} />
-              <span>New</span>
+              <span>New chat</span>
             </button>
-            <button
-              type="button"
-              onClick={() => void refresh()}
-            >
-              <RefreshCw size={16} />
-              <span>Refresh</span>
-            </button>
-            {authEnabled && (
-              <button type="button" onClick={() => void logout()}>
-                <LogOut size={16} />
-                <span>Logout</span>
-              </button>
-            )}
             {me.user.role === "admin" && (
               <a className="action-link" href="/admin">
                 <UserPlus size={16} />
@@ -318,6 +302,12 @@ function App() {
               <MessageCircle size={16} />
               <span>Telegram</span>
             </a>
+            {authEnabled && (
+              <button type="button" onClick={() => void logout()}>
+                <LogOut size={16} />
+                <span>Logout</span>
+              </button>
+            )}
           </div>
 
           <section className="sessions">
@@ -343,58 +333,46 @@ function App() {
         </aside>
 
         <main className="main">
-          <header className="topbar">
-            <div>
-              <strong>{state.model || "loading model"}</strong>
-              <span>{state.tools.join(", ")}</span>
-            </div>
-            <div className={state.isRunning ? "run-state running" : "run-state"}>
-              {state.isRunning ? <Play size={14} /> : <Terminal size={14} />}
-              <span>{state.isRunning ? "running" : "idle"}</span>
-            </div>
+          {!rightPanelOpen && (
             <button
               type="button"
-              className="topbar-icon-button"
-              onClick={() => setRightPanelOpen((open) => !open)}
-              title={rightPanelOpen ? "Hide right panel" : "Show right panel"}
+              className="panel-reopen"
+              onClick={() => setRightPanelOpen(true)}
+              title="Show panel"
             >
-              {rightPanelOpen ? <PanelRightClose size={17} /> : <PanelRightOpen size={17} />}
+              <PanelRightOpen size={17} />
             </button>
-          </header>
-
-          <section className="status-strip" aria-label="Runtime status">
-            <StatusItem label="commit" value={state.app.commit ?? "unknown"} />
-            <StatusItem label="user" value={`${me.user.email} ${me.user.role}`} />
-            <StatusItem label="executor" value={state.runtime.executor} />
-            <StatusItem label="vm" value={state.runtime.vm ? `${state.runtime.vm.name} ${state.runtime.vm.state}` : "none"} />
-            <StatusItem label="workspace" value={state.workspace || "loading"} title={state.workspace} />
-            <StatusItem label="session" value={shortPath(state.session?.path) || "none"} title={state.session?.path} />
-          </section>
+          )}
 
           {(error || state.error) && <div className="error-line">{error ?? state.error}</div>}
 
           <div className={rightPanelOpen ? "content-grid" : "content-grid right-panel-closed"}>
             <section className="thread-panel">
               <ThreadPrimitive.Root className="thread-root">
-                <ThreadPrimitive.Viewport className="thread-viewport">
-                  <ThreadPrimitive.Empty>
-                    <div className="empty-thread">
-                      <h2>Ask Pi to work in this workspace.</h2>
-                      <p>Messages go straight to Pi. Keep the loop simple and inspect what changes.</p>
-                    </div>
-                  </ThreadPrimitive.Empty>
-                  <ThreadPrimitive.Messages>
-                    {({ message }) => (
-                      <MessagePrimitive.Root className={`message ${message.role}`}>
-                        <div className="message-role">{message.role}</div>
-                        <div className="message-body">
-                          <MessagePrimitive.Content />
-                          <MessageAttachments attachments={messagesById.get(message.id)?.attachments ?? []} />
-                        </div>
-                      </MessagePrimitive.Root>
+                <div className="thread-viewport" ref={viewportRef}>
+                  <div className="thread-stream">
+                    {timeline.length === 0 ? (
+                      <div className="empty-thread">
+                        <h2>Ask Pi to work in this workspace.</h2>
+                        <p>Messages go straight to Pi. Keep the loop simple and inspect what changes.</p>
+                      </div>
+                    ) : (
+                      timeline.map((item) =>
+                        item.kind === "message" ? (
+                          <MessageRow key={item.key} message={item.message} />
+                        ) : (
+                          <ToolCard key={item.key} action={item.action} />
+                        )
+                      )
                     )}
-                  </ThreadPrimitive.Messages>
-                </ThreadPrimitive.Viewport>
+                    {state.isRunning && (
+                      <div className="thinking" aria-label="Pi is thinking">
+                        <Lightbulb size={16} className="thinking-icon" />
+                        <span>Thinking…</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
 
                 <AttachmentComposer isRunning={state.isRunning} onCancel={cancelTurn} onSend={sendMessage} />
               </ThreadPrimitive.Root>
@@ -415,11 +393,141 @@ function App() {
   );
 }
 
-function StatusItem({ label, value, title }: { label: string; value: string; title?: string }) {
+type ToolAction = {
+  id: string;
+  tool: string;
+  createdAt: string;
+  path?: string;
+  command?: string;
+  added?: number;
+  removed?: number;
+  detail?: string;
+};
+
+type TimelineItem =
+  | { key: string; at: number; kind: "message"; message: ChatMessage }
+  | { key: string; at: number; kind: "tool"; action: ToolAction };
+
+const TOOL_LABELS: Record<string, string> = {
+  read: "Read",
+  write: "Wrote",
+  edit: "Edited",
+  bash: "Ran"
+};
+
+function parseToolActions(events: UiEvent[]): ToolAction[] {
+  const actions: ToolAction[] = [];
+  for (const event of events) {
+    if (event.type !== "tool") continue;
+    const match = /^([A-Za-z][\w-]*)\s+started$/.exec(event.title);
+    if (!match) continue;
+    const tool = match[1];
+    let args: Record<string, unknown> = {};
+    try {
+      args = event.detail ? (JSON.parse(event.detail) as Record<string, unknown>) : {};
+    } catch {
+      args = {};
+    }
+    const action: ToolAction = { id: event.id, tool, createdAt: event.createdAt };
+    if (typeof args.path === "string") action.path = args.path;
+    if (typeof args.command === "string") action.command = args.command;
+    if (tool === "write" && typeof args.content === "string") {
+      action.added = countLines(args.content);
+      action.detail = args.content;
+    }
+    if (tool === "edit") {
+      const oldText = pickString(args, ["old_string", "oldText", "old"]);
+      const newText = pickString(args, ["new_string", "newText", "new"]);
+      if (oldText !== undefined) action.removed = countLines(oldText);
+      if (newText !== undefined) action.added = countLines(newText);
+      action.detail = newText ?? oldText;
+    }
+    if (tool === "bash") action.detail = action.command;
+    actions.push(action);
+  }
+  return actions;
+}
+
+function pickString(obj: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    if (typeof obj[key] === "string") return obj[key] as string;
+  }
+  return undefined;
+}
+
+function countLines(text: string): number {
+  if (!text) return 0;
+  return text.replace(/\n$/, "").split("\n").length;
+}
+
+function basename(path: string | undefined): string {
+  if (!path) return "";
+  const parts = path.split("/").filter(Boolean);
+  return parts[parts.length - 1] ?? path;
+}
+
+function MessageRow({ message }: { message: ChatMessage }) {
+  if (message.role === "user") {
+    return (
+      <div className="msg-row user">
+        <div className="bubble user-bubble">
+          {message.content}
+          <MessageAttachments attachments={message.attachments ?? []} />
+        </div>
+      </div>
+    );
+  }
   return (
-    <div className="status-item">
-      <span>{label}</span>
-      <strong title={title ?? value}>{value}</strong>
+    <div className="msg-row assistant">
+      <div className="assistant-body">
+        <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
+        <MessageAttachments attachments={message.attachments ?? []} />
+      </div>
+    </div>
+  );
+}
+
+function ToolCard({ action }: { action: ToolAction }) {
+  const [open, setOpen] = useState(false);
+  const label = TOOL_LABELS[action.tool] ?? action.tool;
+  const isBash = action.tool === "bash";
+  const title = isBash ? action.command ?? "command" : basename(action.path) || label;
+  const subtitle = isBash ? undefined : action.path;
+  const Icon =
+    action.tool === "bash"
+      ? Terminal
+      : action.tool === "edit"
+        ? FilePen
+        : action.tool === "write"
+          ? FilePlus2
+          : FileText;
+
+  return (
+    <div className="tool-card">
+      <button type="button" className="tool-card-head" onClick={() => setOpen((value) => !value)}>
+        <span className="tool-card-icon">
+          <Icon size={16} />
+        </span>
+        <span className="tool-card-text">
+          <strong>
+            <span className="tool-card-label">{label}</span> {title}
+          </strong>
+          {(subtitle || action.added != null || action.removed != null) && (
+            <small>
+              {subtitle}
+              {action.added != null && <span className="diff-add"> +{action.added}</span>}
+              {action.removed != null && <span className="diff-del"> -{action.removed}</span>}
+            </small>
+          )}
+        </span>
+        {action.detail && (
+          <span className="tool-card-open">
+            {open ? "Close" : "Open"}
+            <ChevronDown size={13} className={open ? "chev open" : "chev"} />
+          </span>
+        )}
+      </button>
+      {open && action.detail && <pre className="tool-card-detail">{action.detail}</pre>}
     </div>
   );
 }
@@ -448,12 +556,6 @@ function appendMessageText(message: AppendMessage): string {
     .map((part) => (part.type === "text" ? part.text : ""))
     .filter(Boolean)
     .join("\n");
-}
-
-function shortPath(path: string | undefined): string {
-  if (!path) return "";
-  const parts = path.split("/").filter(Boolean);
-  return parts.length <= 2 ? path : `.../${parts.slice(-2).join("/")}`;
 }
 
 createRoot(document.getElementById("root")!).render(

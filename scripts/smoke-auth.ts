@@ -43,6 +43,8 @@ try {
   assert.match(invite.code, /^[a-z0-9]{4}$/);
   assert.equal(catalog.read().invites[0].code, invite.code);
   assert.equal(catalog.invites(adminUser)[0].code, invite.code);
+  const adminInvite = catalog.createInvite(adminUser, { label: "admins", role: "admin" });
+  const lookalikeInvite = catalog.createInvite(adminUser, { label: "Access code", role: "user" });
 
   const userOne = catalog.signup({
     email: "user1@example.com",
@@ -60,6 +62,47 @@ try {
   assert.equal(userTwo.user.inviteId, userOne.user.inviteId);
   assert.equal(catalog.invites(adminUser)[0].usedCount, 2);
   assert.equal(catalog.users(adminUser).some((user) => user.email === "user1@example.com" && user.invite?.code === invite.code), true);
+
+  const legacyAccessData = catalog.read();
+  legacyAccessData.invites.push({
+    id: "legacy-access",
+    code: "mom-legacy-access",
+    label: "Access code",
+    role: "user",
+    usedCount: 0,
+    active: true,
+    createdByUserId: adminUser.id,
+    createdAt: Math.floor(Date.now() / 1000)
+  });
+  catalog.write(legacyAccessData);
+
+  const accessCode = catalog.accessCode(adminUser);
+  assert.match(accessCode.code, /^[a-z0-9]{4}$/);
+  assert.equal(accessCode.label, "Access code");
+  assert.equal(accessCode.role, "user");
+  assert.notEqual(accessCode.code, invite.code);
+  assert.notEqual(accessCode.code, adminInvite.code);
+  assert.notEqual(accessCode.code, lookalikeInvite.code);
+  assert.equal(catalog.accessCode(adminUser).id, accessCode.id);
+  assert.equal(catalog.read().invites.find((candidate) => candidate.id === "legacy-access")?.active, false);
+
+  const accessUser = catalog.signup({
+    email: "access@example.com",
+    fullName: "Access User",
+    password: "password123",
+    inviteCode: accessCode.code
+  });
+  assert.equal(accessUser.user.role, "user");
+  assert.equal(accessUser.user.inviteId, accessCode.id);
+
+  const regeneratedAccessCode = catalog.regenerateAccessCode(adminUser);
+  assert.match(regeneratedAccessCode.code, /^[a-z0-9]{4}$/);
+  assert.notEqual(regeneratedAccessCode.id, accessCode.id);
+  const afterRegenerate = catalog.read();
+  assert.equal(afterRegenerate.invites.find((candidate) => candidate.id === accessCode.id)?.active, false);
+  assert.equal(afterRegenerate.invites.find((candidate) => candidate.id === invite.invite.id)?.active, true);
+  assert.equal(afterRegenerate.invites.find((candidate) => candidate.id === adminInvite.invite.id)?.active, true);
+  assert.equal(afterRegenerate.invites.find((candidate) => candidate.id === lookalikeInvite.invite.id)?.active, true);
 
   const legacyData = catalog.read();
   legacyData.invites.push({
@@ -95,6 +138,9 @@ try {
 
   const normalUser = catalog.currentUser(`agentmom_session=${userOne.token}`)!;
   assert.throws(() => catalog.createInvite(normalUser, { role: "user" }), /admin required/);
+  assert.throws(() => catalog.setUserRole(adminUser, adminUser.id, "user"), /you cannot change your own role/);
+  assert.equal(catalog.setUserRole(adminUser, normalUser.id, "admin").role, "admin");
+  assert.equal(catalog.login({ email: "user1@example.com", password: "password123" }).user.role, "admin");
 
   const seed = catalog.ensureSeedUser({
     email: "admin@bitcoin.com",

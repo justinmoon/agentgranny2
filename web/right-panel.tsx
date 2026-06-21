@@ -8,7 +8,7 @@ import {
   Trash2,
   X
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AppState, PreviewService } from "../src/types.js";
 import "./right-panel.css";
 
@@ -39,6 +39,7 @@ export function RightPanel({
   const [tabs, setTabs] = useState<RightPanelTab[]>(initialRightTabs);
   const [activeTabId, setActiveTabId] = useState(initialRightTabs[0].id);
   const [newTabMenuOpen, setNewTabMenuOpen] = useState(false);
+  const previousPreviewIds = useRef(new Set<string>());
 
   const selectedPreview = useMemo(
     () => previews.find((preview) => preview.id === selectedPreviewId) ?? previews[0],
@@ -56,10 +57,27 @@ export function RightPanel({
     }
   }, [selectedPreviewId, previews]);
 
+  useEffect(() => {
+    const previousIds = previousPreviewIds.current;
+    const hasNewPreview = previews.some((preview) => !previousIds.has(preview.id));
+    previousPreviewIds.current = new Set(previews.map((preview) => preview.id));
+    if (!hasNewPreview) return;
+
+    setSelectedPreviewId(previews[0]?.id);
+    const previewTab = tabs.find((tab) => tab.type === "preview");
+    if (previewTab) {
+      setActiveTabId(previewTab.id);
+      return;
+    }
+
+    const id = `preview-${Date.now().toString(36)}`;
+    setTabs((current) => [...current, { id, type: "preview", title: "Preview" }]);
+    setActiveTabId(id);
+  }, [previews, tabs]);
+
   function addTab(type: RightPanelTab["type"]) {
-    const title = type === "preview" ? "Preview" : "Events";
     const id = `${type}-${Date.now().toString(36)}`;
-    const tab = { id, type, title };
+    const tab = { id, type, title: type === "preview" ? "Preview" : "Events" };
     setTabs((current) => [...current, tab]);
     setActiveTabId(id);
     setNewTabMenuOpen(false);
@@ -147,6 +165,26 @@ export function RightPanel({
   );
 }
 
+function EventLog({ events }: { events: AppState["events"] }) {
+  return (
+    <section className="event-log-pane">
+      {events.length === 0 ? (
+        <p className="muted">No events.</p>
+      ) : (
+        events.map((event) => (
+          <article className={event.isError ? "json-event error" : "json-event"} key={event.id}>
+            <div>
+              <strong>{event.title}</strong>
+              <span>{new Date(event.createdAt).toLocaleTimeString()}</span>
+            </div>
+            {event.detail && <pre>{event.detail}</pre>}
+          </article>
+        ))
+      )}
+    </section>
+  );
+}
+
 function PreviewPane({
   previews,
   selectedPreview,
@@ -225,26 +263,6 @@ function PreviewPane({
             title={`Preview ${selectedPreview.name}`}
           />
         )
-      )}
-    </section>
-  );
-}
-
-function EventLog({ events }: { events: AppState["events"] }) {
-  return (
-    <section className="event-log-pane">
-      {events.length === 0 ? (
-        <p className="muted">No events.</p>
-      ) : (
-        events.map((event) => (
-          <article className={event.isError ? "json-event error" : "json-event"} key={event.id}>
-            <div>
-              <strong>{event.title}</strong>
-              <span>{new Date(event.createdAt).toLocaleTimeString()}</span>
-            </div>
-            <pre>{JSON.stringify(event, null, 2)}</pre>
-          </article>
-        ))
       )}
     </section>
   );

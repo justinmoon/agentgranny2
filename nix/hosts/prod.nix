@@ -9,7 +9,7 @@
     host = "0.0.0.0";
     stateDir = "/data/agentmom-web";
     workspaceDir = "/data/agentmom-web/workspace";
-    openRouterKeyFile = "/run/agenix/agentmom-openrouter-api-key";
+    envFile = "/run/agenix/agentmom-secrets";
     deploymentBaseDomain = "agentmom.xyz";
 
     caddy = {

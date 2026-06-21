@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { posix as pathPosix } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AppConfig } from "./config.js";
+import { SESSION_COOKIE } from "./catalog.js";
 import {
   cleanResponseHeaders,
   rewriteRootRelativeText,
@@ -35,6 +36,7 @@ export type PreviewFetchResponse = ProxyFetchResponse;
 type RegisterPreviewInput = {
   port: number;
   name: string;
+  runtime?: PreviewService["runtime"];
 };
 
 export type PreviewRegistration = RegisterPreviewInput & {
@@ -81,7 +83,7 @@ export class PreviewManager {
       id,
       name,
       port: input.port,
-      runtime: this.config.executor,
+      runtime: input.runtime ?? this.config.executor,
       path: `${this.config.previewBasePath}/${id}/`,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now
@@ -92,6 +94,16 @@ export class PreviewManager {
 
   remove(id: string): boolean {
     return this.services.delete(id);
+  }
+
+  removeByRuntime(runtime: PreviewService["runtime"]): PreviewService[] {
+    const removed: PreviewService[] = [];
+    for (const service of this.services.values()) {
+      if (service.runtime !== runtime) continue;
+      this.services.delete(service.id);
+      removed.push(service);
+    }
+    return removed;
   }
 
   async fetch(id: string, request: PreviewFetchRequest): Promise<PreviewFetchResponse> {
@@ -175,7 +187,7 @@ async function fetchLocal(service: PreviewService, request: PreviewFetchRequest)
 }
 
 function rewritePreviewResponse(service: PreviewService, response: PreviewFetchResponse): PreviewFetchResponse {
-  const headers = cleanResponseHeaders(response.headers);
+  const headers = stripNamedSetCookie(cleanResponseHeaders(response.headers), SESSION_COOKIE);
   const contentType = headers["content-type"] ?? "";
   if (!shouldRewriteText(contentType)) {
     return { ...response, headers };
@@ -188,4 +200,25 @@ function rewritePreviewResponse(service: PreviewService, response: PreviewFetchR
     headers,
     body
   };
+}
+
+function stripNamedSetCookie(headers: Record<string, string>, name: string): Record<string, string> {
+  const next = { ...headers };
+  for (const headerName of ["set-cookie", "set-cookie2"]) {
+    const value = next[headerName];
+    if (!value) continue;
+    const cookies = value.split(/,(?=\s*[^=;,\s]+=)/);
+    const filtered = cookies.filter((cookie) => {
+      const first = cookie.trim().split(";", 1)[0] ?? "";
+      const equals = first.indexOf("=");
+      const key = equals === -1 ? first : first.slice(0, equals);
+      return key !== name;
+    });
+    if (filtered.length === 0) {
+      delete next[headerName];
+    } else {
+      next[headerName] = filtered.join(",");
+    }
+  }
+  return next;
 }

@@ -18,8 +18,8 @@ let
       runtime_dir="/run/${cfg.serviceName}"
     fi
     export XDG_RUNTIME_DIR="$runtime_dir"
-    ${lib.optionalString (cfg.openRouterKeyFile != null) ''
-      export AGENTMOM_OPENROUTER_ENV_FILE="$CREDENTIALS_DIRECTORY/openrouter"
+    ${lib.optionalString (cfg.envFile != null) ''
+      export AGENTMOM_ENV_FILE="$CREDENTIALS_DIRECTORY/app-env"
     ''}
     exec ${lib.getExe cfg.package}
   '';
@@ -81,11 +81,12 @@ in
       description = "Workspace root mounted into the agent runtime.";
     };
 
-    openRouterKeyFile = lib.mkOption {
+    envFile = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
       default = null;
       description = ''
-        File containing either a raw OpenRouter API key or OPENROUTER_API_KEY=...
+        Env file containing OPENROUTER_API_KEY, AGENTMOM_TELEGRAM_BOT_TOKEN,
+        and BRAVE_API_KEY.
         The service reads this through systemd credentials, so the source file can remain root-only.
       '';
     };
@@ -174,6 +175,13 @@ in
     {
       virtualisation.podman.enable = true;
 
+      assertions = [
+        {
+          assertion = cfg.envFile != null;
+          message = "services.agentmomWeb.envFile must point to an env file with OPENROUTER_API_KEY, AGENTMOM_TELEGRAM_BOT_TOKEN, and BRAVE_API_KEY.";
+        }
+      ];
+
       environment.systemPackages = [
         cfg.package
         cfg.smolvm.package
@@ -258,8 +266,8 @@ in
             User = cfg.user;
             WorkingDirectory = cfg.workspaceDir;
           }
-          // lib.optionalAttrs (cfg.openRouterKeyFile != null) {
-            LoadCredential = [ "openrouter:${toString cfg.openRouterKeyFile}" ];
+          // lib.optionalAttrs (cfg.envFile != null) {
+            LoadCredential = [ "app-env:${toString cfg.envFile}" ];
           };
       };
     }

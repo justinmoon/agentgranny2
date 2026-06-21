@@ -17,5 +17,5 @@ let
   ];
 in
 {
-  "nix/secrets/openrouter-api-key.age".publicKeys = allKeys;
+  "nix/secrets/secrets.age".publicKeys = allKeys;
 }
