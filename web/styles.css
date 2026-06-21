@@ -310,13 +310,12 @@ code {
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
-  box-shadow: var(--shadow-sm), var(--highlight);
+  box-shadow: var(--highlight);
 }
 
 .actions button:hover,
 .actions a:hover,
-.session:hover,
-.session.active {
+.session:hover {
   border-color: var(--line-strong);
   background: var(--panel-hover);
   box-shadow: var(--shadow-md), var(--highlight);
@@ -331,8 +330,10 @@ code {
 }
 
 .session.active {
-  border-color: var(--accent);
-  box-shadow: var(--shadow-md), inset 0 0 0 1px rgba(225, 148, 78, 0.35);
+  border-color: transparent;
+  background: var(--accent-tint);
+  box-shadow: var(--accent-tint-ring);
+  color: var(--accent-strong);
 }
 
 .actions a {
@@ -484,7 +485,7 @@ code {
 
 .status-strip {
   border-bottom: 1px solid var(--line);
-  background: var(--line);
+  background: rgb(255 255 255 / 6%);
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 1px;
