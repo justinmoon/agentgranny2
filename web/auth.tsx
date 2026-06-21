@@ -1,6 +1,26 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import type { MeState } from "../src/types.js";
 import { readError } from "./http.js";
+
+function Typewriter({ text, speed = 60 }: { text: string; speed?: number }) {
+  const prefersReduced =
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  const [count, setCount] = useState(prefersReduced ? text.length : 0);
+
+  useEffect(() => {
+    if (count >= text.length) return;
+    const id = window.setTimeout(() => setCount((value) => value + 1), speed);
+    return () => window.clearTimeout(id);
+  }, [count, text, speed]);
+
+  return (
+    <span className="typewriter">
+      {text.slice(0, count)}
+      <span className="caret" aria-hidden="true" />
+    </span>
+  );
+}
 
 export function AuthScreen({
   onAuth,
@@ -40,14 +60,11 @@ export function AuthScreen({
 
   return (
     <main className="auth-shell">
-      <form className="auth-form" onSubmit={(event) => void submit(event)}>
-        <div className="brand auth-brand">
-          <div className="brand-mark">AM</div>
-          <div>
-            <h1>Agent Mom</h1>
-            <p>{mode === "login" ? "Sign in" : "Create account"}</p>
-          </div>
-        </div>
+      <div className="auth-stack">
+        <p className="auth-tagline">
+          <Typewriter text="Let's build with Agent Mom" />
+        </p>
+        <form className="auth-form" onSubmit={(event) => void submit(event)}>
         {mode === "signup" && (
           <input value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Full name" />
         )}
@@ -58,13 +75,11 @@ export function AuthScreen({
           placeholder="Password"
           type="password"
         />
-        {mode === "signup" && (
-          <input
-            value={inviteCode}
-            onChange={(event) => setInviteCode(event.target.value)}
-            placeholder="Invite code"
-          />
-        )}
+        <input
+          value={inviteCode}
+          onChange={(event) => setInviteCode(event.target.value)}
+          placeholder="Access code"
+        />
         {error && <div className="form-error">{error}</div>}
         <button type="submit" disabled={busy || !email.trim() || !password}>
           {busy ? "Working" : mode === "login" ? "Log in" : "Sign up"}
@@ -79,7 +94,8 @@ export function AuthScreen({
         >
           {mode === "login" ? "Need an account?" : "Have an account?"}
         </button>
-      </form>
+        </form>
+      </div>
     </main>
   );
 }

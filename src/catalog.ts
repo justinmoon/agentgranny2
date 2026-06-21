@@ -553,10 +553,66 @@ export class CatalogStore {
     return this.read().invites.map(publicInvite);
   }
 
+  private createSharedAccessCodeInData(data: CatalogData, user: CatalogUser): CatalogInvite {
+    const invite: CatalogInvite = {
+      id: randomUUID(),
+      code: `mom-${base64url(12)}`,
+      label: "Access code",
+      role: "user",
+      usedCount: 0,
+      active: true,
+      createdByUserId: user.id,
+      createdAt: now()
+    };
+    data.invites.push(invite);
+    return invite;
+  }
+
+  // The single shared access code: the one active invite everyone signs up with.
+  accessCode(user: CatalogUser): PublicInvite {
+    if (user.role !== "admin") throw new Error("admin required");
+    const data = this.read();
+    let invite = data.invites.find((candidate) => candidate.active);
+    if (!invite) {
+      invite = this.createSharedAccessCodeInData(data, user);
+      this.write(data);
+    }
+    return publicInvite(invite);
+  }
+
+  // Regenerate: invalidate every existing code and mint a fresh shared one.
+  regenerateAccessCode(user: CatalogUser): PublicInvite {
+    if (user.role !== "admin") throw new Error("admin required");
+    const data = this.read();
+    const timestamp = now();
+    for (const invite of data.invites) {
+      if (invite.active) {
+        invite.active = false;
+        invite.disabledAt = timestamp;
+      }
+    }
+    const invite = this.createSharedAccessCodeInData(data, user);
+    this.write(data);
+    return publicInvite(invite);
+  }
+
   users(user: CatalogUser): PublicAdminUser[] {
     if (user.role !== "admin") throw new Error("admin required");
     const data = this.read();
     return data.users.map((candidate) => publicAdminUser(candidate, data));
+  }
+
+  setUserRole(actor: CatalogUser, targetUserId: string, role: string): PublicAdminUser {
+    if (actor.role !== "admin") throw new Error("admin required");
+    if (targetUserId === actor.id) throw new Error("you cannot change your own role");
+    const nextRole: UserRole = role === "admin" ? "admin" : "user";
+    const data = this.read();
+    const target = data.users.find((candidate) => candidate.id === targetUserId);
+    if (!target) throw new Error("user not found");
+    target.role = nextRole;
+    target.updatedAt = now();
+    this.write(data);
+    return publicAdminUser(target, data);
   }
 
   createTelegramLinkCode(user: CatalogUser): CatalogTelegramLinkCode {

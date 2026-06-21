@@ -188,6 +188,14 @@ const server = createServer(async (req, res) => {
       return sendJson(res, { ok: true, users: catalog.users(user) });
     }
 
+    const setUserRole = /^\/api\/admin\/users\/([^/]+)\/role$/.exec(url.pathname);
+    if (setUserRole && req.method === "POST") {
+      const user = requireUser(req);
+      const body = await readJson(req);
+      const role = typeof body?.role === "string" ? body.role : "user";
+      return sendJson(res, { ok: true, user: catalog.setUserRole(user, decodeURIComponent(setUserRole[1]), role) });
+    }
+
     if (url.pathname === "/api/admin/invites" && req.method === "POST") {
       const user = requireUser(req);
       const body = await readJson(req);
@@ -202,6 +210,16 @@ const server = createServer(async (req, res) => {
     if (disableInvite && req.method === "POST") {
       const user = requireUser(req);
       return sendJson(res, { ok: true, invite: catalog.disableInvite(user, decodeURIComponent(disableInvite[1])) });
+    }
+
+    if (url.pathname === "/api/admin/access-code" && req.method === "GET") {
+      const user = requireUser(req);
+      return sendJson(res, { ok: true, accessCode: catalog.accessCode(user) });
+    }
+
+    if (url.pathname === "/api/admin/access-code/regenerate" && req.method === "POST") {
+      const user = requireUser(req);
+      return sendJson(res, { ok: true, accessCode: catalog.regenerateAccessCode(user) });
     }
 
     if (url.pathname === "/api/workspaces" && req.method === "GET") {
