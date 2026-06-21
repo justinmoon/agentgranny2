@@ -32,6 +32,8 @@
   --radius-sm: 8px;
   --radius: 11px;
   --radius-lg: 14px;
+  --radius-button: 18px;
+  --radius-icon: 14px;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
   --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.5);
   --shadow-lg: 0 24px 70px rgba(0, 0, 0, 0.55);
@@ -251,7 +253,7 @@ textarea:focus {
   width: fit-content;
   min-height: 30px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-button);
   background: var(--panel);
   color: var(--text);
   display: inline-flex;
@@ -294,7 +296,7 @@ code {
 
 .actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 8px;
 }
 
@@ -303,7 +305,7 @@ code {
 .session {
   min-height: 36px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-button);
   background: var(--panel);
   color: var(--text);
   display: flex;
@@ -386,7 +388,7 @@ code {
   display: grid;
   place-items: center;
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-icon);
   background: var(--panel);
   color: var(--muted);
   box-shadow: var(--shadow-md), var(--highlight);
@@ -462,7 +464,7 @@ code {
   width: 32px;
   height: 32px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-icon);
   background: var(--panel);
   color: var(--muted);
   display: grid;
