@@ -34,7 +34,7 @@ buildNpmPackage {
 
   nodejs = nodejs_24;
   npmDepsFetcherVersion = 2;
-  npmDepsHash = "sha256-UDn9pif2IA8MHVA588KwtLqbHpM5Fxi1KlkzUBRjRBA=";
+  npmDepsHash = "sha256-SI64OtY9rgFgnV/9aKEM82nPebDObq+OlfjlF8ztA4M=";
   makeCacheWritable = true;
 
   nativeBuildInputs = [ makeWrapper ];
