@@ -15,8 +15,6 @@ import {
   LogOut,
   MessageCircle,
   PanelRightOpen,
-  RefreshCw,
-  RotateCcw,
   SquarePen,
   Terminal,
   UserPlus
@@ -257,8 +255,7 @@ function App() {
     <AssistantRuntimeProvider runtime={runtime}>
       <div className="app-shell">
         <aside className="sidebar">
-          <div className="brand">
-            <div className="brand-mark">AM</div>
+          <div className="brand brand-lg">
             <div>
               <h1>Agent Mom</h1>
               <p>{me.user.fullName}</p>
@@ -268,21 +265,8 @@ function App() {
           <div className="actions">
             <button type="button" onClick={newSession}>
               <SquarePen size={16} />
-              <span>New</span>
+              <span>New chat</span>
             </button>
-            <button
-              type="button"
-              onClick={() => void refresh()}
-            >
-              <RefreshCw size={16} />
-              <span>Refresh</span>
-            </button>
-            {authEnabled && (
-              <button type="button" onClick={() => void logout()}>
-                <LogOut size={16} />
-                <span>Logout</span>
-              </button>
-            )}
             {me.user.role === "admin" && (
               <a className="action-link" href="/admin">
                 <UserPlus size={16} />
@@ -293,6 +277,12 @@ function App() {
               <MessageCircle size={16} />
               <span>Telegram</span>
             </a>
+            {authEnabled && (
+              <button type="button" onClick={() => void logout()}>
+                <LogOut size={16} />
+                <span>Logout</span>
+              </button>
+            )}
           </div>
 
           <section className="sessions">
@@ -335,26 +325,28 @@ function App() {
             <section className="thread-panel">
               <ThreadPrimitive.Root className="thread-root">
                 <div className="thread-viewport" ref={viewportRef}>
-                  {timeline.length === 0 ? (
-                    <div className="empty-thread">
-                      <h2>Ask Pi to work in this workspace.</h2>
-                      <p>Messages go straight to Pi. Keep the loop simple and inspect what changes.</p>
-                    </div>
-                  ) : (
-                    timeline.map((item) =>
-                      item.kind === "message" ? (
-                        <MessageRow key={item.key} message={item.message} />
-                      ) : (
-                        <ToolCard key={item.key} action={item.action} />
+                  <div className="thread-stream">
+                    {timeline.length === 0 ? (
+                      <div className="empty-thread">
+                        <h2>Ask Pi to work in this workspace.</h2>
+                        <p>Messages go straight to Pi. Keep the loop simple and inspect what changes.</p>
+                      </div>
+                    ) : (
+                      timeline.map((item) =>
+                        item.kind === "message" ? (
+                          <MessageRow key={item.key} message={item.message} />
+                        ) : (
+                          <ToolCard key={item.key} action={item.action} />
+                        )
                       )
-                    )
-                  )}
-                  {state.isRunning && (
-                    <div className="thinking" aria-label="Pi is thinking">
-                      <Lightbulb size={16} className="thinking-icon" />
-                      <span>Thinking…</span>
-                    </div>
-                  )}
+                    )}
+                    {state.isRunning && (
+                      <div className="thinking" aria-label="Pi is thinking">
+                        <Lightbulb size={16} className="thinking-icon" />
+                        <span>Thinking…</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <AttachmentComposer isRunning={state.isRunning} onCancel={cancelTurn} onSend={sendMessage} />

@@ -188,6 +188,20 @@ a {
   font-size: 0.86rem;
 }
 
+/* Sidebar brand without the icon mark — bigger wordmark, user name beneath. */
+.brand-lg {
+  grid-template-columns: 1fr;
+}
+
+.brand-lg h1 {
+  font-size: 1.7rem;
+  line-height: 1.1;
+}
+
+.brand-lg p {
+  font-size: 0.95rem;
+}
+
 .workspace-block,
 .runtime-block {
   display: grid;
